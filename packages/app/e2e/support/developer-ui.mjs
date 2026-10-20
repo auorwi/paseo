@@ -1,10 +1,21 @@
 /** @param {import('@playwright/test').Page} page */
-export async function installDeveloperToastDismissal(page) {
-  // Developer chrome must not cover app actions or move the test's pointer/focus.
+export async function hideDeveloperToasts(page) {
+  // Keep developer chrome out of app interactions without Playwright locator
+  // handlers: parallel app assertions can race while dismissing the same toast.
   // Console errors remain in the runner's logs.
-  const dismiss = page.locator("#error-toast").getByRole("button", { name: "", exact: true });
-  await page.addLocatorHandler(dismiss, () => dismiss.dispatchEvent("click"), {
-    // A new logged error can replace the toast before the old one disappears.
-    noWaitAfter: true,
-  });
+  function hideToasts() {
+    const installStyle = () => {
+      const style = document.createElement("style");
+      style.textContent = "#error-toast { display: none !important; }";
+      document.head.appendChild(style);
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", installStyle, { once: true });
+    } else {
+      installStyle();
+    }
+  }
+  await page.addInitScript(hideToasts);
+  // Electron connects to an already loaded page; apply there as well.
+  await page.evaluate(hideToasts);
 }
