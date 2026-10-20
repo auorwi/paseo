@@ -46,8 +46,7 @@ function createBrowserSink(): RenderSink {
         globalThis.__PASEO_RENDER_PROFILE__ = [];
         globalThis.__PASEO_RENDER_PROFILE_REASONS__ = {};
       };
-      if (globalThis.__PASEO_RENDER_PROFILE__.length >= 2000)
-        globalThis.__PASEO_RENDER_PROFILE__.shift();
+      // Browser QA compares cumulative commit counts until an explicit reset.
       globalThis.__PASEO_RENDER_PROFILE__.push(sample);
     },
     reasons(id, reasons) {
