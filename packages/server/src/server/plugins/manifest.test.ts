@@ -130,19 +130,18 @@ describe("plugin manifest", () => {
 
   // Listing translations are read by the registry when it publishes, never by the daemon, so a
   // value the registry would refuse must not stop a plugin from installing.
-  it.each([
-    { "zh-cn": { name: "示例" } },
-    { "zh-CN": { desc: "示例" } },
-    "zh-CN",
-  ])("ignores listing translations: %j", async (translations) => {
-    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-manifest-"));
-    directories.push(directory);
-    await writeFile(
-      path.join(directory, "paseo-plugin.json"),
-      JSON.stringify({ id: "described", translations }),
-    );
-    await expect(readPluginManifest(directory)).resolves.toEqual({ id: "described" });
-  });
+  it.each([{ "zh-cn": { name: "示例" } }, { "zh-CN": { desc: "示例" } }, "zh-CN"])(
+    "ignores listing translations: %j",
+    async (translations) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-manifest-"));
+      directories.push(directory);
+      await writeFile(
+        path.join(directory, "paseo-plugin.json"),
+        JSON.stringify({ id: "described", translations }),
+      );
+      await expect(readPluginManifest(directory)).resolves.toEqual({ id: "described" });
+    },
+  );
 
   it("accepts only non-empty argv arrays for build commands", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-manifest-"));
