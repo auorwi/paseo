@@ -1,12 +1,9 @@
 package sh.paseo.trace
 
-import android.content.ContentValues
 import android.content.Context
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.util.Log
 import org.json.JSONObject
-import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
@@ -20,16 +17,20 @@ internal class DiagnosticRecorder(private val context: Context, private val meta
   private val dropped = AtomicLong()
   private val worker = Executors.newSingleThreadScheduledExecutor()
   private val session = UUID.randomUUID().toString()
-  private var output: OutputStream? = null
-  private var currentUri: android.net.Uri? = null
-  private var size = 0
-  private var part = 0
   @Volatile private var failed = false
   private val watchdog = HeartbeatWatchdog(SystemClock.elapsedRealtime(), ::record)
 
+  private val log = RotatingLog(DownloadsLogStorage(context, session), { part ->
+    serialize(Event("file.start", metadata + mapOf("schema" to "1", "part" to "$part")))
+  }, { error ->
+    failed = true
+    queue.clear()
+    Log.e("PaseoDiagnostics", "Diagnostic recording stopped: storage unavailable", error)
+  })
+
   init {
-    record("session.start", metadata + mapOf("session" to session, "schema" to "1", "heartbeatMs" to "250", "stallThresholdMs" to "500"))
-    worker.scheduleWithFixedDelay({ drain() }, 0, 250, TimeUnit.MILLISECONDS)
+    record("session.start", metadata + mapOf("session" to session, "schema" to "1", "heartbeatMs" to "${HeartbeatTiming.intervalMs}", "stallThresholdMs" to "${HeartbeatTiming.overdueMs}"))
+    worker.scheduleWithFixedDelay({ drain() }, 0, HeartbeatTiming.intervalMs, TimeUnit.MILLISECONDS)
   }
 
   fun record(name: String, data: Map<String, String>) {
@@ -44,85 +45,32 @@ internal class DiagnosticRecorder(private val context: Context, private val meta
 
   private fun drain() {
     if (failed) return
-    try {
-      watchdog.check(SystemClock.elapsedRealtime())
-      val lost = dropped.getAndSet(0)
-      if (lost > 0) write(Event("recorder.dropped", mapOf("count" to "$lost")))
-      // A traffic flood must not prevent watchdog checks or flushing.
-      var remaining = 2048
-      while (remaining-- > 0) {
-        val event = queue.poll() ?: break
-        write(event)
-      }
-      // Closing each batch publishes size/modified time to MediaStore. Keeping a
-      // descriptor open makes the current file appear as 0 B in Android Files.
-      output?.close()
-      output = null
-    } catch (error: Exception) {
-      // Storage failure must never crash the app or create a retry storm.
-      failed = true
-      queue.clear()
-      runCatching { output?.close() }
-      output = null
-      Log.e("PaseoDiagnostics", "Diagnostic recording stopped: storage unavailable", error)
+    watchdog.check(SystemClock.elapsedRealtime())
+    val lost = dropped.getAndSet(0)
+    if (lost > 0) write(Event("recorder.dropped", mapOf("count" to "$lost")))
+    var remaining = 2048
+    while (remaining-- > 0 && !failed) {
+      val event = queue.poll() ?: break
+      write(event)
     }
+    log.finishBatch()
   }
 
-  private fun write(event: Event) {
-    val bytes = (JSONObject().apply {
-      put("event", event.name)
-      put("session", session)
-      put("wallMs", event.wallMs)
-      put("monoMs", event.monoMs)
-      put("data", JSONObject(event.data))
-    }.toString() + "\n").toByteArray(Charsets.UTF_8)
-    if (currentUri == null || size + bytes.size > 5 * 1024 * 1024) rotate()
-    if (output == null) {
-      output = checkNotNull(context.contentResolver.openOutputStream(checkNotNull(currentUri), "wa")).buffered(64 * 1024)
-    }
-    output!!.write(bytes)
-    size += bytes.size
-  }
+  private fun write(event: Event) = log.write(serialize(event))
 
-  private fun rotate() {
-    output?.close()
-    output = null
-    val resolver = context.contentResolver
-    val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-    val values = ContentValues().apply {
-      put(MediaStore.MediaColumns.DISPLAY_NAME, "paseo-diagnostics-${System.currentTimeMillis()}-${session.take(8)}-${part++}.jsonl")
-      put(MediaStore.MediaColumns.MIME_TYPE, "application/x-ndjson")
-      put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/Paseo diagnostics/")
-    }
-    val uri = checkNotNull(resolver.insert(collection, values))
-    currentUri = uri
-    output = checkNotNull(resolver.openOutputStream(uri, "w")).buffered(64 * 1024)
-    val header = (JSONObject().apply {
-      put("event", "file.start")
-      put("session", session)
-      put("wallMs", System.currentTimeMillis())
-      put("monoMs", SystemClock.elapsedRealtime())
-      put("data", JSONObject(metadata + mapOf("schema" to "1", "part" to "$part")))
-    }.toString() + "\n").toByteArray(Charsets.UTF_8)
-    output!!.write(header)
-    size = header.size
-    // Only prune files created by this installation, never arbitrary user downloads.
-    resolver.query(collection, arrayOf(MediaStore.MediaColumns._ID),
-      "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?",
-      arrayOf("Download/Paseo diagnostics/", context.packageName), "${MediaStore.MediaColumns._ID} DESC")?.use { cursor ->
-      var count = 0
-      while (cursor.moveToNext()) {
-        if (++count > 8) resolver.delete(android.content.ContentUris.withAppendedId(collection, cursor.getLong(0)), null, null)
-      }
-    }
-  }
+  private fun serialize(event: Event): ByteArray = (JSONObject().apply {
+    put("event", event.name)
+    put("session", session)
+    put("wallMs", event.wallMs)
+    put("monoMs", event.monoMs)
+    put("data", JSONObject(event.data))
+  }.toString() + "\n").toByteArray(Charsets.UTF_8)
 
   fun close() {
     worker.execute {
       record("session.end", emptyMap())
       drain()
-      runCatching { output?.close() }
-      output = null
+      log.finishBatch()
     }
     worker.shutdown()
   }

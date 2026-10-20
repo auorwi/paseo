@@ -254,13 +254,20 @@ test("traces WebSocket frames, message types, and JSON parse duration", async ()
       }),
     ]),
   );
-  // Every started span must close, including nested send/dispatch work.
-  let depth = 0;
+  const stack: string[] = [];
+  const parentage: [string, string | undefined][] = [];
   for (const record of recorder.records) {
-    depth += record.phase === "begin" ? 1 : -1;
-    expect(depth).toBeGreaterThanOrEqual(0);
+    if (record.phase === "begin") {
+      parentage.push([record.name, stack.at(-1)]);
+      stack.push(record.name);
+    } else {
+      expect(stack.length).toBeGreaterThan(0);
+      stack.pop();
+    }
   }
-  expect(depth).toBe(0);
+  expect(stack).toEqual([]);
+  expect(parentage).toContainEqual(["paseo.ws.frame.outbound", "paseo.ws.message.outbound"]);
+  expect(parentage).toContainEqual(["paseo.ws.dispatch", "paseo.ws.frame.inbound"]);
   expect(JSON.stringify(recorder.records)).not.toContain("trace_unit_test");
 });
 

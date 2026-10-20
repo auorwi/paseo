@@ -4,7 +4,7 @@ import { resolveAppVersion } from "@/utils/app-version";
 import { createRecorder } from "./internal/recorder";
 
 interface NativeRecorder {
-  startRecorder(metadata: Record<string, string>): void;
+  startRecorder(metadata: Record<string, string>): number;
   record(name: string, fields: Record<string, string>): void;
   heartbeat(): void;
 }
@@ -13,7 +13,7 @@ const native =
   Constants.expoConfig?.extra?.watchdogBuild === true
     ? requireOptionalNativeModule<NativeRecorder>("PaseoNativeTrace")
     : null;
-export const diagnostics = native
+export const watchdog = native
   ? createRecorder(
       (name, fields) => native.record(name, fields),
       () => performance.now(),
@@ -21,15 +21,15 @@ export const diagnostics = native
   : null;
 let started = false;
 
-export function startDiagnostics(): void {
-  if (!native || !diagnostics || started) return;
+export function startWatchdog(): void {
+  if (!native || !watchdog || started) return;
   started = true;
-  native.startRecorder({
+  const heartbeatMs = native.startRecorder({
     version: resolveAppVersion() ?? "unknown",
     build: String(Constants.expoConfig?.extra?.diagnosticRevision ?? "unknown"),
     builtAt: String(Constants.expoConfig?.extra?.diagnosticBuildTime ?? "unknown"),
     reactProfiling: "true",
   });
-  setInterval(() => native.heartbeat(), 250);
-  setInterval(() => diagnostics.flushRenders(), 1000);
+  setInterval(() => native.heartbeat(), heartbeatMs);
+  setInterval(() => watchdog.flushRenders(), 1000);
 }

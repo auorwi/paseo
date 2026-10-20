@@ -1,4 +1,4 @@
-import { diagnostics } from "@/diagnostics";
+import { watchdog } from "@/watchdog";
 import { useSyncExternalStore, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import equal from "fast-deep-equal/es6";
@@ -1165,7 +1165,7 @@ export class HostRuntimeController {
     to: HostRuntimeConnectionMachineState["tag"];
     event: HostRuntimeConnectionMachineEvent;
   }): void {
-    diagnostics?.record("host.transition", {
+    watchdog?.record("host.transition", {
       host: this.host.serverId,
       from: input.from,
       to: input.to,

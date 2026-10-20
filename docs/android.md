@@ -73,12 +73,16 @@ npm run dev:ios         # Build/install the iOS development app
 `build:apk` writes `artifacts/paseo-dogfood-universal.apk`; `build:apk:arm64` writes
 `artifacts/paseo-dogfood-arm64.apk`. Neither command launches or installs on a device. Both enable
 `PASEO_WATCHDOG_BUILD=1`, the production React profiling renderer, and Android's shell-profileable
-flag. It keeps the production package ID (`sh.paseo`) and release optimizations. Use this APK for
-personal dogfooding. Normal store/release workflows leave diagnostics disabled.
+flag. These builds keep the production package ID (`sh.paseo`) and release optimizations. Use this APK for
+personal dogfooding. Android system-trace spans require the separate `PASEO_PROFILE_BUILD=1` flag;
+watchdog recording does not send duplicate spans to that sink by default. Normal store/release
+workflows leave diagnostics disabled.
 
 The older `android`, `android:development`, and `ios` commands remain aliases for development.
 `android:production` still builds and installs a release through Expo; use `build:apk` when you
 need an artifact. `android:clear` removes the generated Android project.
+
+Run `npm run test:android --workspace=@getpaseo/app` to prebuild Android and run native module unit tests. The app CI job runs this command with the Android toolchain.
 
 ### Diagnostic logs without ADB
 
@@ -91,13 +95,15 @@ can leave older Downloads files that the new installation cannot manage.
 Each file identifies its build and session. Events include application-transport frame sizes and
 message/request IDs, connection transitions, parse/validation/dispatch spans, named React subtree
 render timings, and foreground JS heartbeat gaps. Payloads, passwords, and message contents
-are excluded; connection identifiers include host addresses. Each size has a unit: **bytes** when already available, otherwise **UTF-16 code units** for text. These are
+are excluded; connection identifiers include host addresses. Each size has a unit: **bytes** when
+already available, otherwise **UTF-16 code units** for text. These are
 client transport observations, after relay decryption where applicable, not packet arrival times.
 
 The native recorder flags a heartbeat overdue by more than 500 ms (250 ms expected interval).
 A heartbeat gap bounds the unresponsive interval; it is not an exact blocked-stack duration.
 Backgrounding suspends detection. `js.stall.started` can be written while JS remains blocked;
-`js.stall.recovered` records the gap when JS resumes. Process death leaves earlier files intact,
+`js.stall.recovered` records the gap when JS resumes. Recovery can appear without a start event
+when JS resumes before the next native sampling tick. Process death leaves earlier files intact,
 but queued/unflushed records can be lost. A missing recovery event alone does not prove a crash.
 
 `react.render.slow` records subtree rendering taking at least 16 ms; one-second summaries include

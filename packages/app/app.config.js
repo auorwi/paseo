@@ -11,7 +11,7 @@ const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 const isWatchdogBuild = process.env.PASEO_WATCHDOG_BUILD === "1";
-const isProfileBuild = isWatchdogBuild || process.env.PASEO_PROFILE_BUILD === "1";
+const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -181,7 +181,7 @@ export default {
         },
       ],
       ...buildProfile.fdroidPlugins,
-      ...(isProfileBuild ? [withAndroidProfileable] : []),
+      ...(isProfileBuild || isWatchdogBuild ? [withAndroidProfileable] : []),
     ],
     experiments: {
       typedRoutes: true,

@@ -14,6 +14,7 @@ class PaseoNativeTraceModule : Module() {
       if (recorder == null) {
         appContext.reactContext?.applicationContext?.let { recorder = DiagnosticRecorder(it, metadata) }
       }
+      HeartbeatTiming.intervalMs
     }
     Function("record") { name: String, data: Map<String, String> -> recorder?.record(name, data) }
     Function("heartbeat") { recorder?.heartbeat() }

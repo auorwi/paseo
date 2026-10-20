@@ -1,5 +1,11 @@
 package sh.paseo.trace
 
+internal object HeartbeatTiming {
+  const val intervalMs = 250L
+  const val overdueMs = 500L
+  const val gapMs = intervalMs + overdueMs
+}
+
 /** Monotonic time is supplied by the owner, so suspension and recovery are deterministic. */
 internal class HeartbeatWatchdog(startMs: Long, private val emit: (String, Map<String, String>) -> Unit) {
   private var foreground = true
@@ -7,8 +13,8 @@ internal class HeartbeatWatchdog(startMs: Long, private val emit: (String, Map<S
   private var overdue = false
 
   @Synchronized fun heartbeat(now: Long) {
-    if (foreground && now - lastHeartbeat > 750) {
-      emit("js.stall.recovered", mapOf("heartbeatGapMs" to "${now - lastHeartbeat}", "overdueMs" to "${now - lastHeartbeat - 250}"))
+    if (foreground && now - lastHeartbeat > HeartbeatTiming.gapMs) {
+      emit("js.stall.recovered", mapOf("heartbeatGapMs" to "${now - lastHeartbeat}", "overdueMs" to "${now - lastHeartbeat - HeartbeatTiming.intervalMs}"))
     }
     lastHeartbeat = now
     overdue = false
@@ -24,7 +30,7 @@ internal class HeartbeatWatchdog(startMs: Long, private val emit: (String, Map<S
 
   @Synchronized fun check(now: Long) {
     val gap = now - lastHeartbeat
-    if (foreground && gap > 750 && !overdue) {
+    if (foreground && gap > HeartbeatTiming.gapMs && !overdue) {
       emit("js.stall.started", mapOf("heartbeatGapMs" to "$gap", "lastHeartbeatMonoMs" to "$lastHeartbeat"))
       overdue = true
     }

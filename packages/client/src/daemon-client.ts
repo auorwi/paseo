@@ -1794,12 +1794,21 @@ export class DaemonClient {
     this.endTraceSection(isOpen);
   }
 
+  private beginSessionDispatchTrace(message: SessionOutboundMessage): boolean {
+    if (!this.config.trace?.isEnabled()) return false;
+    const fields = { messageType: message.type, ...describeRequestIdentity(message) };
+    this.traceInstant("paseo.ws.message.inbound", { envelopeType: "session", ...fields });
+    return this.beginTraceSection("paseo.ws.dispatch", fields);
+  }
+
   private sendJsonMessage(envelopeType: string, messageType: string, message: unknown): void {
-    const isOpen = this.beginTraceSection("paseo.ws.message.outbound", {
-      envelopeType,
-      messageType,
-      ...describeRequestIdentity(message),
-    });
+    const isOpen =
+      this.config.trace?.isEnabled() === true &&
+      this.beginTraceSection("paseo.ws.message.outbound", {
+        envelopeType,
+        messageType,
+        ...describeRequestIdentity(message),
+      });
     try {
       this.sendTransportFrame(JSON.stringify(message));
     } finally {
@@ -6512,15 +6521,7 @@ export class DaemonClient {
       return;
     }
 
-    this.traceInstant("paseo.ws.message.inbound", {
-      envelopeType: "session",
-      messageType: parsed.data.message.type,
-      ...describeRequestIdentity(parsed.data.message),
-    });
-    const dispatchTrace = this.beginTraceSection("paseo.ws.dispatch", {
-      messageType: parsed.data.message.type,
-      ...describeRequestIdentity(parsed.data.message),
-    });
+    const dispatchTrace = this.beginSessionDispatchTrace(parsed.data.message);
     try {
       this.handleSessionMessage(parsed.data.message);
     } finally {
