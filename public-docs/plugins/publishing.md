@@ -72,8 +72,10 @@ each value sets only `name` or `description`, as non-empty strings. Paseo itself
 
 To translate the overview, publish a complete copy named for the language next to `OVERVIEW.md`,
 such as `OVERVIEW.zh-CN.md`. The scaffold's `files` list already includes `OVERVIEW.*.md`. The
-registry reads every `OVERVIEW.<tag>.md` as a translation and fails publication on a tag that is not
-a canonical language tag, so do not name other files that way. Readers in that language see the
+registry reads `OVERVIEW.<tag>.md` as a translation when the tag is a canonical language tag with a
+two- or three-letter language code, other than `en`. It ignores other names, such as
+`OVERVIEW.backup.md` or `OVERVIEW.zh-cn.md`. A three-letter name such as `OVERVIEW.old.md` counts as
+a language, so do not use one for a non-translation. Readers in that language see the
 translation; others see the English overview with a notice. The overview rules above apply to
 translations, so update them when `OVERVIEW.md` changes. Reviewers can add or correct translations
 in the registry.
