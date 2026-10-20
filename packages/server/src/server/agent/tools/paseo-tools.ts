@@ -1,3 +1,9 @@
+import {
+  createHostResolver,
+  waitForPermissionChange,
+  type HostOperation,
+  type ToolHosts,
+} from "../host-operations/index.js";
 import { AgentDirectory } from "../directory.js";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
@@ -72,6 +78,7 @@ import {
   type PromptDispatchDisposition,
   sendPromptToAgent,
   setupFinishNotification,
+  setupFinishWait,
   waitForAgentRunStartWithTimeout,
 } from "../agent-prompt.js";
 import { respondToAgentPermission } from "../permission-response.js";
@@ -110,6 +117,8 @@ import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-confi
 import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
 
 export interface PaseoToolHostDependencies {
+  serverId?: string;
+  hosts?: () => ToolHosts;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
@@ -163,6 +172,10 @@ export interface PaseoToolHostDependencies {
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
   logger: Logger;
+}
+
+function settledStatus(status: string): "error" | "idle" {
+  return status === "error" ? "error" : "idle";
 }
 
 function parseTimestamp(value: string | null | undefined): number {
@@ -685,7 +698,58 @@ function createToolCatalog(
     return result.data;
   };
 
+  const localHostOperations = new Map<string, HostOperation>();
   const tools = new Map<string, PaseoToolDefinition>();
+  const hostTools = new Map([
+    ["create_agent", "createAgent"],
+    ["create_workspace", "createWorkspace"],
+    ["list_workspaces", "listWorkspaces"],
+  ] as const);
+  const hostResolver = createHostResolver({
+    serverId: options.serverId ?? "self",
+    callerAgentId,
+    lockedCwd: callerContext?.lockedCwd,
+    hosts: () => {
+      if (!options.hosts) throw new Error("Connected hosts are not configured");
+      return options.hosts();
+    },
+    local: {
+      createAgent: (args, context) => localHostOperations.get("create_agent")!(args, context),
+      createWorkspace: (args, context) =>
+        localHostOperations.get("create_workspace")!(args, context),
+      listWorkspaces: (args, context) => localHostOperations.get("list_workspaces")!(args, context),
+      async observe(agentId, handler, signal) {
+        const unsubscribe = agentManager.subscribe(
+          (event) => {
+            if (event.type === "agent_state") handler(toAgentPayload(event.agent));
+          },
+          { agentId, replayState: true },
+        );
+        const stop = () => unsubscribe();
+        signal.addEventListener("abort", stop, { once: true });
+        return async () => {
+          signal.removeEventListener("abort", stop);
+          unsubscribe();
+        };
+      },
+      async wait(agentId, signal) {
+        const settled = await agentManager.waitForAgentEvent(agentId, {
+          signal,
+          waitForActive: true,
+        });
+        const snapshot = agentManager.getAgent(agentId);
+        const final = snapshot
+          ? await serializeSnapshotWithMetadata(agentStorage, snapshot, childLogger)
+          : null;
+        return {
+          status: settled.permission ? "permission" : settledStatus(settled.status),
+          final,
+          lastMessage: settled.lastMessage,
+          error: final?.lastError ?? null,
+        };
+      },
+    },
+  });
   const registerTool = (
     name: string,
     config: PaseoToolConfig,
@@ -694,6 +758,73 @@ function createToolCatalog(
   ) => {
     if (!isPaseoToolEnabled(options.paseoToolPolicy, name)) {
       return;
+    }
+    const operation = hostTools.get(
+      name as "create_agent" | "create_workspace" | "list_workspaces",
+    );
+    if (operation) {
+      localHostOperations.set(name, handler);
+      const original = config.inputSchema;
+      const selector = {
+        serverId: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Destination server ID from list_hosts; omit for this host."),
+      };
+      config = {
+        ...config,
+        inputSchema:
+          original instanceof z.ZodObject
+            ? original.extend(selector)
+            : { ...(original as z.ZodRawShape), ...selector },
+      };
+      handler = async ({ serverId, ...input }, context) => {
+        const destination = serverId ?? options.serverId;
+        try {
+          const response = await hostResolver.use(serverId, (host) =>
+            host[operation](input, context),
+          );
+          if (name === "create_agent" && callerAgentId && input.notifyOnFinish !== false) {
+            const created = response.structuredContent as { agentId: string };
+            setupFinishWait({
+              agentManager,
+              agentStorage,
+              originServerId: options.serverId,
+              childServerId: destination,
+              childAgentId: created.agentId,
+              callerAgentId,
+              logger: childLogger,
+              wait: (signal) =>
+                hostResolver.use(destination, (host) => host.wait(created.agentId, signal)),
+              afterPermission: (requestId, signal) =>
+                hostResolver.use(destination, (host) =>
+                  waitForPermissionChange(host, created.agentId, requestId, signal),
+                ),
+            });
+          }
+          return {
+            ...response,
+            structuredContent: {
+              ...(response.structuredContent as object),
+              ...(destination ? { serverId: destination } : {}),
+            },
+          };
+        } catch (error) {
+          if (!options.serverId) throw error;
+          const failure = {
+            serverId: destination,
+            error: error instanceof Error ? error.message : String(error),
+            ...(error instanceof Error && "code" in error ? { code: error.code } : {}),
+            ...(error instanceof Error && "outcome" in error ? { outcome: error.outcome } : {}),
+          };
+          return {
+            isError: true,
+            content: [{ type: "text", text: JSON.stringify(failure) }],
+            structuredContent: failure,
+          };
+        }
+      };
     }
     tools.set(name, {
       name,
@@ -1333,6 +1464,19 @@ function createToolCatalog(
   }
 
   registerTool(
+    "list_hosts",
+    {
+      title: "List hosts",
+      description: "Discover this host and registered destination hosts for fleet tools.",
+      inputSchema: {},
+    },
+    async () => ({
+      content: [],
+      structuredContent: ensureValidJson(await hostResolver.directory()),
+    }),
+  );
+
+  registerTool(
     "create_workspace",
     {
       title: "Create workspace",
@@ -1593,10 +1737,15 @@ function createToolCatalog(
           workspaceId: resolvedArgs.workspaceId,
           thinking: parsedArgs.settings?.thinkingOptionId,
           features: parsedArgs.settings?.features,
-          labels: parsedArgs.labels,
+          labels: {
+            ...parsedArgs.labels,
+            ...(callerAgentId && !resolvedArgs.detached && options.serverId
+              ? { "paseo.parent-server-id": options.serverId }
+              : {}),
+          },
           mode: parsedArgs.settings?.modeId,
           promptFailure: "throw",
-          notifyOnFinish,
+          notifyOnFinish: false,
           detached: resolvedArgs.detached,
           callerAgentId,
           callerContext,
@@ -2003,6 +2152,7 @@ function createToolCatalog(
           agentManager,
           agentStorage,
           childAgentId: agentId,
+          childServerId: options.serverId,
           callerAgentId,
           waitForTurnStart: false,
           dispatchResult,
@@ -2023,6 +2173,7 @@ function createToolCatalog(
           agentManager,
           agentStorage,
           childAgentId: agentId,
+          childServerId: options.serverId,
           callerAgentId,
           waitForTurnStart: true,
           logger: childLogger,

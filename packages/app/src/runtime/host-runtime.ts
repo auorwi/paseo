@@ -1,3 +1,6 @@
+import { createHostChannelTransport } from "@getpaseo/client/internal/hosts";
+import type { OwnedSubscription } from "@getpaseo/client";
+import type { HostDirectory } from "@getpaseo/protocol/hosts";
 import { useSyncExternalStore, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import equal from "fast-deep-equal/es6";
@@ -113,6 +116,7 @@ export type ConnectionLinkImport =
   | { status: "cancelled" };
 
 export type ActiveConnection =
+  | { type: "routed"; endpoint: string; display: string }
   | { type: "directTcp"; endpoint: string; display: string }
   | { type: "directSocket"; endpoint: string; display: "socket" }
   | { type: "directPipe"; endpoint: string; display: "pipe" }
@@ -234,6 +238,12 @@ const ADAPTIVE_SWITCH_CONSECUTIVE_PROBES = 3;
 const CONFIGURED_OVERRIDE_BOOTSTRAP_RETRY_MS = 1_000;
 
 function toActiveConnection(connection: HostConnection): ActiveConnection {
+  if (connection.type === "routed")
+    return {
+      type: "routed",
+      endpoint: connection.originServerId,
+      display: `via ${connection.originServerId}`,
+    };
   if (connection.type === "directSocket") {
     return {
       type: "directSocket",
@@ -518,7 +528,9 @@ function probeIntervalForConnection(
   return PROBE_MAX_BACKOFF_MS;
 }
 
-function createDefaultDeps(): HostRuntimeControllerDeps {
+function createDefaultDeps(
+  resolveOrigin: (serverId: string) => DaemonClient | null = () => null,
+): HostRuntimeControllerDeps {
   const browserHostAvailable =
     typeof getDesktopHost()?.browser?.executeAutomationCommand === "function";
   const browserAutomationCapabilities = browserHostAvailable
@@ -549,6 +561,15 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         ...(host.password ? { password: host.password } : {}),
         localCredential: () => readDesktopManagedLocalCredential(connection),
       } satisfies Omit<DaemonClientConfig, "url">;
+      if (connection.type === "routed") {
+        const origin = resolveOrigin(connection.originServerId);
+        if (!origin) throw new Error(`Origin host ${connection.originServerId} is unavailable`);
+        return new DaemonClient({
+          ...base,
+          url: "ws://routed-host/ws",
+          transportFactory: createHostChannelTransport(origin, host.serverId, clientId, null),
+        });
+      }
       if (connection.type === "directSocket" || connection.type === "directPipe") {
         return new DaemonClient({
           ...base,
@@ -597,15 +618,40 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         },
       });
     },
-    connectToDaemon: ({ host, connection, timeoutMs }) =>
-      connectToDaemon(connection, {
+    connectToDaemon: async ({ host, connection, timeoutMs }) => {
+      if (connection.type === "routed") {
+        const origin = resolveOrigin(connection.originServerId);
+        if (!origin?.isConnected)
+          throw new Error(`Origin host ${connection.originServerId} is unavailable`);
+        const client = new DaemonClient({
+          url: "ws://routed-host/ws",
+          clientId: crypto.randomUUID(),
+          transportFactory: createHostChannelTransport(
+            origin,
+            host.serverId,
+            crypto.randomUUID(),
+            null,
+          ),
+          reconnect: { enabled: false },
+          appVersion: resolveAppVersion() ?? undefined,
+        });
+        try {
+          await client.connect();
+          return { client, serverId: host.serverId, hostname: null };
+        } catch (error) {
+          await client.close();
+          throw error;
+        }
+      }
+      return connectToDaemon(connection, {
         ...(host.serverId ? { serverId: host.serverId } : {}),
         ...(host.password ? { password: host.password } : {}),
         localCredential: () => readDesktopManagedLocalCredential(connection),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         capabilities: appCapabilities,
         trace: nativePerformanceTrace,
-      }),
+      });
+    },
     getClientId: () => getOrCreateClientId(),
     mountClientHandlers: ({ client, host }) => {
       const unmountServerData = mountServerDataPushRouter({
@@ -1488,6 +1534,11 @@ interface AgentDirectoryRefreshInput {
 
 export class HostRuntimeStore {
   private controllers = new Map<string, HostRuntimeController>();
+  private hostObservations = new Map<
+    string,
+    { client: DaemonClient; observation: OwnedSubscription<HostDirectory>; unsubscribe: () => void }
+  >();
+  private fleetDirectoryDemand = new Map<string, () => void>();
   private serverListeners = new Map<string, Set<() => void>>();
   private globalListeners = new Set<() => void>();
   private hostListListeners = new Set<() => void>();
@@ -1518,7 +1569,7 @@ export class HostRuntimeStore {
     replicaRowStore?: ReplicaRowStore;
     revokePushNotifications?: typeof revokePushNotifications;
   }) {
-    this.deps = input?.deps ?? createDefaultDeps();
+    this.deps = input?.deps ?? createDefaultDeps((serverId) => this.getClient(serverId));
     this.storage = input?.storage ?? AsyncStorage;
     this.replicaCache = new ReplicaCache(input?.replicaRowStore ?? createReplicaRowStore());
     this.revokePushNotifications = input?.revokePushNotifications ?? revokePushNotifications;
@@ -2185,6 +2236,12 @@ export class HostRuntimeStore {
     connection: HostConnection;
     existingClient?: DaemonClient;
   }): Promise<HostProfile> {
+    const retained = this.hosts.find((host) => host.serverId === input.serverId);
+    if (
+      retained?.connections.some((connection) => connection.type === "routed") &&
+      input.connection.type !== "routed"
+    )
+      throw new Error(`Host ${input.serverId} already has a retained routed connection`);
     const now = new Date().toISOString();
     const next = upsertHostConnectionInProfiles({
       profiles: this.hosts,
@@ -2258,6 +2315,11 @@ export class HostRuntimeStore {
       if (nextIds.has(serverId)) {
         continue;
       }
+      this.hostObservations.get(serverId)?.unsubscribe();
+      void this.hostObservations.get(serverId)?.observation.release();
+      this.hostObservations.delete(serverId);
+      this.fleetDirectoryDemand.get(serverId)?.();
+      this.fleetDirectoryDemand.delete(serverId);
       this.controllers.delete(serverId);
       this.lastConnectionStatusByServer.delete(serverId);
       this.connectionStatusStartedAtByServer.delete(serverId);
@@ -2314,6 +2376,7 @@ export class HostRuntimeStore {
         const snapshot = controller.getSnapshot();
         this.syncSessionReplica(snapshot.serverId, snapshot);
         this.syncDirectoryConnection(snapshot.serverId);
+        this.syncHostDiscovery(snapshot.serverId);
         this.emit(snapshot.serverId);
       });
       void controller
@@ -2330,6 +2393,73 @@ export class HostRuntimeStore {
         });
       this.emit(host.serverId);
     }
+  }
+
+  /** A retained destination uses its selected route; another route is an explicit conflict. */
+  requireHostRoute(serverId: string, originServerId: string): void {
+    if (serverId === originServerId) return;
+    const connection = this.hosts.find((host) => host.serverId === serverId)?.connections[0];
+    if (connection?.type !== "routed" || connection.originServerId !== originServerId) {
+      throw new Error(
+        `Host ${serverId} is already connected through another route. Requested via ${originServerId}.`,
+      );
+    }
+  }
+
+  private syncHostDiscovery(serverId: string): void {
+    const client = this.getClient(serverId);
+    const previous = this.hostObservations.get(serverId);
+    if (previous?.client === client) return;
+    previous?.unsubscribe();
+    void previous?.observation.release();
+    this.hostObservations.delete(serverId);
+    const host = this.hosts.find((candidate) => candidate.serverId === serverId);
+    if (
+      !client?.isConnected ||
+      !client.getLastServerInfoMessage()?.features?.connectedHosts ||
+      host?.connections.some((connection) => connection.type === "routed")
+    )
+      return;
+    const observation = client.observeHosts();
+    const apply = (directory: HostDirectory) => {
+      if (this.hostObservations.get(serverId)?.client !== client) return;
+      for (const target of directory.hosts) {
+        if (!target.serverId || target.serverId === serverId) continue;
+        if (!this.hosts.some((candidate) => candidate.serverId === target.serverId)) {
+          const now = new Date().toISOString();
+          const connection = {
+            id: `via:${serverId}`,
+            type: "routed" as const,
+            originServerId: serverId,
+          };
+          const profile: HostProfile = {
+            serverId: target.serverId,
+            label: target.label ?? target.serverId,
+            appearance: defaultHostAppearance(),
+            lifecycle: {},
+            connections: [connection],
+            preferredConnectionId: connection.id,
+            createdAt: now,
+            updatedAt: now,
+          };
+          this.setHostsAndSync([...this.hosts, profile]);
+          void this.persistHosts();
+        }
+        if (!this.fleetDirectoryDemand.has(target.serverId))
+          this.fleetDirectoryDemand.set(
+            target.serverId,
+            this.acquireDirectoryDemand(target.serverId),
+          );
+      }
+    };
+    const unsubscribe = observation.subscribe({
+      snapshot: apply,
+      update: (message) => {
+        if (message.type === "hosts.changed") apply(message.payload.directory);
+      },
+    });
+    this.hostObservations.set(serverId, { client, observation, unsubscribe });
+    void observation.ready.then(apply).catch(() => undefined);
   }
 
   private syncSessionReplica(serverId: string, snapshot: HostRuntimeSnapshot): void {

@@ -29,6 +29,22 @@ principal. An ordinary direct B consumer does not become that producer by supply
 The optional `server_info.sourceId` reports this producer identity separately from the authenticated admission principal.
 Trusted server plugins retain the authority of their runtime; they are not sandboxed by this feature.
 
+## Delegating agents
+
+Agent MCP discovers destination IDs with `list_hosts`. `create_workspace`, `list_workspaces`, and
+`create_agent` accept `serverId`; omission selects the calling daemon. Remote creation requires a
+destination workspace and explicit provider/model. Caller filesystem defaults apply only on the
+calling daemon.
+
+The parent’s Subagents track shows qualified children across connected hosts. Opening a child uses
+the ordinary conversation. The app retains one route per destination; a request through another
+origin reports a conflict. It does not substitute an existing direct connection.
+
+Finish notifications use the existing idle wait, including a pending initial run or an already idle
+child. They name the server and agent. A daemon restart or route loss ends an outstanding notification
+wait; inspect or wait for the child again rather than resending its prompt. Concurrent prompts gain
+no additional turn attribution or delivery guarantee.
+
 ## Connections and recovery
 
 The shared Node connector owns the target grammar and each connection attempt, including a fresh

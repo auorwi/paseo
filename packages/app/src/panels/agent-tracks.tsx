@@ -1,3 +1,6 @@
+import type { AgentAddress } from "@getpaseo/protocol/addresses";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { useToast } from "@/contexts/toast-context";
 import { memo, useCallback, type ReactElement } from "react";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
@@ -70,18 +73,28 @@ export const AgentTracks = memo(function AgentTracks({
     },
     [openInSidePane, tabId, workspaceKey],
   );
+  const toast = useToast();
   const handleOpenSubagent = useCallback(
-    (subagentId: string) => {
-      const session = useSessionStore.getState().sessions[serverId];
+    ({ serverId: targetServerId, agentId: subagentId }: AgentAddress) => {
+      try {
+        getHostRuntimeStore().requireHostRoute(targetServerId, serverId);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+        return;
+      }
+      const session = useSessionStore.getState().sessions[targetServerId];
       const agent = session?.agents.get(subagentId) ?? session?.agentDetails.get(subagentId);
       // A subagent in another workspace lives in that workspace's tabs.
-      if (agent?.workspaceId && agent.workspaceId !== workspaceId) {
-        navigateToAgent({ serverId, agentId: subagentId });
+      if (
+        targetServerId !== serverId ||
+        (agent?.workspaceId && agent.workspaceId !== workspaceId)
+      ) {
+        navigateToAgent({ serverId: targetServerId, agentId: subagentId });
         return;
       }
       openSubagentTarget({ kind: "agent", agentId: subagentId });
     },
-    [openSubagentTarget, serverId, workspaceId],
+    [openSubagentTarget, serverId, workspaceId, toast],
   );
   const handleOpenProviderSubagent = useCallback(
     (parentAgentId: string, subagentId: string) => {
