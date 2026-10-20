@@ -9,6 +9,8 @@ import "@expo/metro-runtime";
 // oxlint-disable-next-line import/no-unassigned-import -- Preserve Expo's entry side effects.
 import "expo-router/build/fast-refresh";
 import { renderRootComponent } from "expo-router/build/renderRootComponent";
+import { startDiagnostics } from "./src/diagnostics";
 import { RootApp } from "./src/root-app";
 
+startDiagnostics();
 renderRootComponent(RootApp);

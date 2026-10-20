@@ -1,3 +1,4 @@
+import { diagnostics } from "@/diagnostics";
 import { Profiler, type ProfilerOnRenderCallback, type ReactNode } from "react";
 
 export interface RenderProfileSample {
@@ -30,7 +31,9 @@ function getSearchParam(name: string): string | null {
 
 export function isRenderProfileEnabled(): boolean {
   return (
-    globalThis.__PASEO_RENDER_PROFILE_ENABLED__ === true || getSearchParam("renderProfile") === "1"
+    diagnostics !== null ||
+    globalThis.__PASEO_RENDER_PROFILE_ENABLED__ === true ||
+    getSearchParam("renderProfile") === "1"
   );
 }
 
@@ -42,7 +45,13 @@ const onRender: ProfilerOnRenderCallback = (
   startTime,
   commitTime,
 ) => {
+  if (diagnostics) {
+    diagnostics.render({ id, phase, actualDuration, startTime, commitTime });
+    return;
+  }
   globalThis.__PASEO_RENDER_PROFILE__ ??= [];
+  if (globalThis.__PASEO_RENDER_PROFILE__.length >= 2000)
+    globalThis.__PASEO_RENDER_PROFILE__.shift();
   globalThis.__PASEO_RENDER_PROFILE__.push({
     id,
     phase,
@@ -73,7 +82,7 @@ export function RenderProfile({ id, children }: { id: string; children: ReactNod
 }
 
 export function recordRenderProfileReasons(id: string, reasons: string[]) {
-  if (!isRenderProfileEnabled() || reasons.length === 0) {
+  if (diagnostics || !isRenderProfileEnabled() || reasons.length === 0) {
     return;
   }
   globalThis.__PASEO_RENDER_PROFILE_REASONS__ ??= {};

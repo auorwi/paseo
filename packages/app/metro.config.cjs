@@ -16,6 +16,7 @@ const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
   .toLowerCase();
 
 const config = getDefaultConfig(projectRoot);
+config.cacheVersion = process.env.PASEO_WATCHDOG_BUILD === "1" ? "watchdog" : "standard";
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
 
 // Keep app exports deterministic across dev machines and CI. Metro's Watchman
@@ -75,6 +76,14 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    process.env.PASEO_WATCHDOG_BUILD === "1" &&
+    platform === "android" &&
+    /[/\\]Renderer[/\\]shims[/\\]/.test(context.originModulePath) &&
+    /implementations\/(ReactFabric|ReactNativeRenderer)-prod$/.test(moduleName)
+  ) {
+    return defaultResolveRequest(context, moduleName.replace(/-prod$/, "-profiling"), platform);
+  }
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
     return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
   }

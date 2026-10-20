@@ -1,3 +1,4 @@
+import { diagnostics } from "@/diagnostics";
 import type { DaemonClientTrace } from "@getpaseo/client/internal/daemon-client";
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { isProfileBuild } from "@/constants/build-profile";
@@ -30,9 +31,26 @@ function formatSectionName(name: string, args?: Record<string, string>): string 
 }
 
 export function traceInstant(name: string, args?: Record<string, string>): void {
+  diagnostics?.record(name, args);
   if (!nativePerformanceTrace.isEnabled()) {
     return;
   }
   nativePerformanceTrace.beginSection(name, args);
   nativePerformanceTrace.endSection();
+}
+
+/** Each client owns its section stack; overlapping hosts never share span identity. */
+export function createPerformanceTrace(context: Record<string, string>): DaemonClientTrace {
+  const recorder = diagnostics?.trace(context);
+  return {
+    isEnabled: () => recorder !== undefined || nativePerformanceTrace.isEnabled(),
+    beginSection(name, args) {
+      recorder?.beginSection(name, args);
+      if (nativePerformanceTrace.isEnabled()) nativePerformanceTrace.beginSection(name, args);
+    },
+    endSection() {
+      recorder?.endSection();
+      if (nativePerformanceTrace.isEnabled()) nativePerformanceTrace.endSection();
+    },
+  };
 }

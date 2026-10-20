@@ -90,6 +90,8 @@ Do not:
 - Hedge with "generally", "typically", or "you may want to" when the answer is "do this".
 - Clear your throat: "It's worth noting that", "In order to", "This section covers".
 
+When Mo requests an APK, use `npm run build:apk:arm64` for an ARM64 build: writes `artifacts/paseo-dogfood-arm64.apk` with diagnostics without starting a device; `npm run build:apk` builds all four Android architectures.
+
 ## Quick start
 
 ```bash
