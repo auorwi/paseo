@@ -132,7 +132,7 @@ Paseo 为客户端代码提供以下模块：
 
 这些确切的模块标识符使用宿主的运行时实例。请求其他宿主模块的客户端包会以 `Module "<name>" is not available in plugin client code` 失败。
 
-不要导入 `lucide-react-native`、`react-native-svg` 或 DOM 库。把贡献的 `icon` 字段设为一个 [Lucide 图标名称](https://lucide.dev/icons/)；Paseo 会校验名称并渲染图标。
+不要导入 `lucide-react-native`、`react-native-svg` 或 DOM 库。把贡献的 `icon` 字段设为一个 [Lucide 图标名称](https://lucide.dev/icons/)、内联 SVG 或组件；Paseo 会校验图标并渲染它。参见[图标](#icons)。
 
 ### 跨平台规则 {#cross-platform-rules}
 
@@ -273,7 +273,7 @@ Paseo 刷新 Agent 的方式是关闭它当前的 Provider 会话，再用当前
 
 使用 `@getpaseo/plugin/server/acp` 中的 `runAcpProvider()` 适配一个基于命令的 ACP。只针对厂商在发现、配置、通知或工具调用方面的差异添加转换器钩子。
 
-`ProviderRegistration.icon` 是相对于插件目录的文件路径，例如 `icon.svg`。它必须解析到该目录内一个不超过 64 KiB 的普通 SVG 文件。SVG 必须是自包含的：脚本、样式、`foreignObject`、事件处理属性、JavaScript URL 以及外部的 `href` 或 `xlink:href` 引用都会被拒绝。允许 `#mark` 这样的片段引用。Paseo 在插件启动时读取并清理该文件；这个字符串从不是内联 SVG 或 URL。
+`ProviderRegistration.icon` 是相对于插件目录的文件路径，例如 `icon.svg`。它必须解析到该目录内一个遵循 [SVG 图标规则](#svg-rules)的普通文件。Paseo 在插件启动时读取并校验该文件；这个字符串从不是内联 SVG 或 URL。
 
 ### 用量来源 {#usage-sources}
 
@@ -396,7 +396,7 @@ export default function contribute(server: PluginServerContext) {
 
 不带 ID 调用 `usage.list_reports` 时会发现账号。带 ID 调用时，它会刷新已知的账号，而不重新发现身份。如果某个存储切换了账号，现有卡片会显示新登录的配额，直到下一次发现。报告会缓存五分钟；`forceRefresh` 会绕过缓存。条目携带 `id`、`account.label` 和 `fetchedAt`。失败的账号还会携带可选的 `loginErrors` 条目，其中包含 `harness` 和每个登录失败的 `report`。客户端通过 `server_info.features.usageSources` 判断是否启用此功能。较旧的 `provider.usage.list` RPC 会为 0.10 客户端映射同样的报告，并把问题渲染到它的 `error` 字符串中。
 
-来源图标遵循上文的 Provider SVG 限制。
+来源图标是一个文件路径，规则与 Provider 图标相同。
 
 ## 入口与清理 {#entry-point-and-cleanup}
 
@@ -819,10 +819,10 @@ export default function contribute(client: PluginClientContext) {
 
 用 `@getpaseo/plugin/client/ui` 中的侧边栏组件渲染该项：
 
-| 组件               | 属性与行为                                                                                                                                                                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SidebarRow`       | 必填 `onPress`；可选 `icon`（Lucide 名称或接收 `{ size, color }` 的组件）、`label`、`active`、`trailing`、`id`。占满整行宽度。`trailing` 渲染在行的可按区域旁边，因此其中的按钮可以单独按下；按下其中其他位置则相当于按下该行。`id` 用于在测试 ID 中区分同一项的多行。 |
-| `SidebarSeparator` | 没有属性。侧边栏的分隔线，放在各组行之间。                                                                                                                                                                                                                             |
+| 组件               | 属性与行为                                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SidebarRow`       | 必填 `onPress`；可选 `icon`（任意一种[图标](#icons)形式）、`label`、`active`、`trailing`、`id`。占满整行宽度。`trailing` 渲染在行的可按区域旁边，因此其中的按钮可以单独按下；按下其中其他位置则相当于按下该行。`id` 用于在测试 ID 中区分同一项的多行。 |
+| `SidebarSeparator` | 没有属性。侧边栏的分隔线，放在各组行之间。                                                                                                                                                                                                             |
 
 弹出框锚定在被按下的那一行，无论按下的是行本身还是它的 `trailing` 内容，因此每行的“More”按钮会在它自己的行旁边打开弹出框。
 
@@ -1066,13 +1066,75 @@ async function copyResult() {
 
 ### 图标 {#icons}
 
-`Icon` 从 Paseo 已安装的图标集中渲染一个 [Lucide 图标](https://lucide.dev/icons/)。插件包不导入 `lucide-react-native` 或 `react-native-svg`。
+每个贡献的 `icon` 字段都接受以下三种形式之一，类型为 `@getpaseo/plugin/client` 中的 `PluginIcon`：
 
-| 属性    | 类型     | 是否必填 | 行为                                          |
-| ------- | -------- | -------- | --------------------------------------------- |
-| `name`  | `string` | 是       | Lucide 图标名称。未知的名称不会渲染任何内容。 |
-| `size`  | `number` | 否       | 图标的宽度和高度。                            |
-| `color` | `string` | 否       | 图标颜色。请使用插件主题令牌。                |
+| 形式        | 示例                        | 适用场景                                        |
+| ----------- | --------------------------- | ----------------------------------------------- |
+| Lucide 名称 | `icon: "Scan"`              | 任意 [Lucide 图标](https://lucide.dev/icons/)。 |
+| 内联 SVG    | `icon: { svg: reviewIcon }` | 品牌标志，或 Lucide 中没有的图标。              |
+| 组件        | `icon: ReviewBadge`         | 随状态变化的图标，例如计数器。                  |
+
+附件来源接受 Lucide 名称或内联 SVG（`PluginSerializableIcon`），因为每个附加的条目都会保存其来源的图标。
+
+Paseo 在贡献注册时校验图标。未知的 Lucide 名称或违反规则的 SVG 会导致插件加载失败，并给出原因：
+
+```text
+Workspace panel review has an invalid icon: script elements are not allowed
+```
+
+Paseo 按界面的图标尺寸绘制内联 SVG，并把界面的图标颜色作为 `currentColor` 传入。用 `currentColor` 绘制即可跟随主题；固定的填充色会保持原样。
+
+组件会收到 `PluginIconProps`，即 `{ size, color }`，并在该尺寸内渲染。头部按钮和 Composer 胶囊传入的是 [`PluginButtonIconProps`](#custom-icons-and-popover-content)。
+
+#### SVG 规则 {#svg-rules}
+
+内联 SVG、Provider 图标和用量来源图标遵循相同的规则：
+
+- 只有一个 `<svg>` 文档，大小不超过 64 KiB。
+- 不含 `<script>`、`<style>` 或 `<foreignObject>` 元素。
+- 不含 `onclick` 这类事件处理属性，也不含 `javascript:` URL。
+- `href` 和 `xlink:href` 只能指向同一文档中的片段，例如 `#mark`。
+
+#### 提供 SVG 标记 {#ship-svg-markup}
+
+把标记放在一个客户端模块中：
+
+```ts
+// client/icons.ts
+export const reviewIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  <path d="M4 4h16v16H4z" />
+</svg>`;
+```
+
+或者把一个 `.svg` 文件放进 `client/` 并导入它。插件编译器会把文件的标记打包为字符串。声明一次该模块，让 TypeScript 接受这个导入：
+
+```ts
+// client/svg.d.ts
+declare module "*.svg" {
+  const markup: string;
+  export default markup;
+}
+```
+
+```ts
+// index.client.tsx
+import reviewIcon from "./client/review.svg";
+
+client.addWorkspacePanel({ id: "review", title: "Review", icon: { svg: reviewIcon } /* … */ });
+```
+
+#### 渲染图标 {#render-an-icon}
+
+`@getpaseo/plugin/client/react-native` 中的 `Icon` 用于在你自己的 UI 中绘制图标。插件包不导入 `lucide-react-native` 或 `react-native-svg`。
+
+| 属性    | 类型         | 是否必填                | 行为                                                       |
+| ------- | ------------ | ----------------------- | ---------------------------------------------------------- |
+| `name`  | `string`     | `name` 或 `icon` 二选一 | Lucide 图标名称。                                          |
+| `icon`  | `PluginIcon` | `name` 或 `icon` 二选一 | 上文任意一种图标形式。                                     |
+| `size`  | `number`     | 否                      | 图标的宽度和高度。默认为 24。                              |
+| `color` | `string`     | 否                      | 图标颜色，也是 SVG 的 `currentColor`。请使用插件主题令牌。 |
+
+未知的名称或违反规则的 SVG 不会渲染任何内容。
 
 ## 时间线条目 {#timeline-items}
 
@@ -1224,7 +1286,7 @@ export default function contribute(client: PluginClientContext) {
 
 ## 设置界面 {#settings-screens}
 
-在 `index.client.tsx` 中用 `client.addSettingsScreen({ id, title, icon, Component })` 注册一个组件。它会出现在该主机的 **设置 → 插件 → 你的插件** 下。`id` 在同一次安装中唯一；`icon` 是一个 Lucide 名称。注册返回一个幂等的移除函数，插件销毁时会移除剩余的界面。
+在 `index.client.tsx` 中用 `client.addSettingsScreen({ id, title, icon, Component })` 注册一个组件。它会出现在该主机的 **设置 → 插件 → 你的插件** 下。`id` 在同一次安装中唯一；`icon` 可以是任意一种[图标](#icons)形式。注册返回一个幂等的移除函数，插件销毁时会移除剩余的界面。
 
 调用 `client.openSettings(id)` 或 Command Center 回调中的 `openSettings(id)` 可以打开你自己的某个界面。即使多台主机安装了同一个插件，每次安装也有各自的值和路由。
 
@@ -1401,14 +1463,14 @@ export default function contribute(client: PluginClientContext) {
 
 `addWorkspacePanel` 的字段：
 
-| 字段        | 是否必填 | 含义                                               |
-| ----------- | -------- | -------------------------------------------------- |
-| `id`        | 是       | 插件内部的面板 ID。                                |
-| `title`     | 是       | 工作区标签页的标题。                               |
-| `icon`      | 是       | Lucide 图标名称。                                  |
-| `context`   | 是       | `workspace` 或 `agent`。                           |
-| `locations` | 否       | `workspace` 和/或 `explorer`。默认为 `workspace`。 |
-| `Component` | 是       | 与所选上下文的属性相匹配的 React Native 组件。     |
+| 字段        | 是否必填 | 含义                                                |
+| ----------- | -------- | --------------------------------------------------- |
+| `id`        | 是       | 插件内部的面板 ID。                                 |
+| `title`     | 是       | 工作区标签页的标题。                                |
+| `icon`      | 是       | Lucide 名称、`{ svg }` 或组件。参见[图标](#icons)。 |
+| `context`   | 是       | `workspace` 或 `agent`。                            |
+| `locations` | 否       | `workspace` 和/或 `explorer`。默认为 `workspace`。  |
+| `Component` | 是       | 与所选上下文的属性相匹配的 React Native 组件。      |
 
 工作区面板接收 `PluginWorkspacePanelProps`：`context: "workspace"`、`theme`、`host`、`layout` 和 `workspaceId`。Agent 面板接收 `PluginAgentPanelProps`：`context: "agent"`、相同的通用字段和 `workspaceId`，外加 `agentId`。
 
@@ -1489,14 +1551,14 @@ client.addCommandCenterItem({
 
 `addCommandCenterItem` 的字段：
 
-| 字段       | 是否必填 | 含义                               |
-| ---------- | -------- | ---------------------------------- |
-| `id`       | 是       | 插件内部的条目 ID。                |
-| `title`    | 是       | 搜索结果的标题。                   |
-| `icon`     | 是       | Lucide 图标名称。                  |
-| `keywords` | 否       | 额外的 Command Center 搜索词。     |
-| `context`  | 是       | `global`、`workspace` 或 `agent`。 |
-| `onSelect` | 是       | 对应上下文的客户端回调。           |
+| 字段       | 是否必填 | 含义                                                |
+| ---------- | -------- | --------------------------------------------------- |
+| `id`       | 是       | 插件内部的条目 ID。                                 |
+| `title`    | 是       | 搜索结果的标题。                                    |
+| `icon`     | 是       | Lucide 名称、`{ svg }` 或组件。参见[图标](#icons)。 |
+| `keywords` | 否       | 额外的 Command Center 搜索词。                      |
+| `context`  | 是       | `global`、`workspace` 或 `agent`。                  |
+| `onSelect` | 是       | 对应上下文的客户端回调。                            |
 
 全局条目出现在该安装所选择的主机上。只有当该主机有一个处于活动状态的缓存工作区时，工作区条目才会出现。只有当获得焦点的工作区标签页是一个 Agent，或者是一个缓存记录属于该工作区的 Agent 上下文插件面板时，Agent 条目才会出现。缺少上下文时条目会被移除，而不是调用插件去获取上下文。
 
@@ -1615,14 +1677,14 @@ const pill = client.addComposerPill({
 
 这些契约从 `@getpaseo/plugin/client` 导出。
 
-| 字段       | 是否必填 | 含义                                                     |
-| ---------- | -------- | -------------------------------------------------------- |
-| `title`    | 是       | 非空的无障碍标签、提示文字和底部面板标题。               |
-| `icon`     | 是       | Lucide 名称或 `ComponentType<PluginButtonIconProps>`。   |
-| `label`    | 否       | 非空的显示文字。省略时使用该位置的默认值。               |
-| `visible`  | 否       | 默认为 `true`。为 false 时移除触发器及其占用的布局空间。 |
-| `disabled` | 否       | 默认为 `false`。按钮保持可见，但无法交互。               |
-| `behavior` | 是       | 下面三种形式之一。                                       |
+| 字段       | 是否必填 | 含义                                                               |
+| ---------- | -------- | ------------------------------------------------------------------ |
+| `title`    | 是       | 非空的无障碍标签、提示文字和底部面板标题。                         |
+| `icon`     | 是       | Lucide 名称、`{ svg }` 或 `ComponentType<PluginButtonIconProps>`。 |
+| `label`    | 否       | 非空的显示文字。省略时使用该位置的默认值。                         |
+| `visible`  | 否       | 默认为 `true`。为 false 时移除触发器及其占用的布局空间。           |
+| `disabled` | 否       | 默认为 `false`。按钮保持可见，但无法交互。                         |
+| `behavior` | 是       | 下面三种形式之一。                                                 |
 
 ```tsx
 type PluginButtonBehavior =
@@ -2011,7 +2073,7 @@ export default function contribute(server: PluginServerContext) {
 }
 ```
 
-Composer 菜单、搜索选择器、选中后的胶囊、草稿状态和提交都由 Paseo 负责。`text` 的值就是发送给 Agent 的完整快照。
+Composer 菜单、搜索选择器、选中后的胶囊、草稿状态和提交都由 Paseo 负责。`text` 的值就是发送给 Agent 的完整快照。`icon` 是 Lucide 名称或 `{ svg }`；参见[图标](#icons)。
 
 ## 主机与生命周期 {#hosts-and-lifecycle}
 
