@@ -1,10 +1,12 @@
 import { expect, test, type Page } from "playwright/test";
 
+function languageButton(page: Page) {
+  return page.getByRole("button", { name: /^(Language|语言)/ }).first();
+}
+
 async function chooseLanguage(page: Page, language: string) {
-  await page
-    .getByRole("combobox", { name: /^(Language|语言)$/ })
-    .first()
-    .selectOption({ label: language });
+  await languageButton(page).click();
+  await page.getByRole("menuitemradio", { name: language }).click();
 }
 
 function describeAlternates(links: Element[]): string[] {
@@ -62,6 +64,14 @@ test.describe("server-rendered Chinese pages", () => {
     await expect(mockup).toContainText("给 Agent 发消息");
     await expect(mockup).not.toContainText("Ready to review");
   });
+
+  test("keep no space after full-width punctuation in the homepage subtitle", async ({ page }) => {
+    await page.goto("/zh-CN");
+
+    await expect(page.getByText(/^同时运行多个编程 Agent/)).toHaveText(
+      "同时运行多个编程 Agent，在任何机器上。在桌前，也在手机上。",
+    );
+  });
 });
 
 test("switches language on the same page, keeping the query and then every link", async ({
@@ -82,13 +92,65 @@ test("switches language on the same page, keeping the query and then every link"
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
-test("offers the language selector on a phone", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("shows the language as an abbreviation and lists every language by name", async ({ page }) => {
+  await page.goto("/docs/cli#running-agents");
+  const button = languageButton(page);
+  await expect(button).toHaveText("EN");
+  await expect(button).toHaveAccessibleName("Language: English");
+
+  await button.click();
+  await expect(page.getByRole("menuitemradio", { name: "English" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  const chinese = page.getByRole("menuitemradio", { name: /简体中文/ });
+  await expect(chinese).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("menu")).toBeInViewport({ ratio: 1 });
+  await expect(chinese).toHaveAttribute("href", "/zh-CN/docs/cli#running-agents");
+
+  await page.mouse.click(5, 400);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+});
+
+test("switches language from the keyboard", async ({ page }) => {
   await page.goto("/");
-  await chooseLanguage(page, "简体中文");
+  await languageButton(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menuitemradio", { name: "English" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(languageButton(page)).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitemradio", { name: /简体中文/ })).toBeFocused();
+  await page.keyboard.press("Enter");
 
   await expect(page).toHaveURL(/\/zh-CN$/);
-  await page.screenshot({ path: test.info().outputPath("mobile-zh-home.png") });
+  await expect(languageButton(page)).toHaveText("ZH");
+  await expect(languageButton(page)).toBeFocused();
+});
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  const cases = [
+    { from: "/", choose: "简体中文", to: "/zh-CN", abbreviation: "ZH" },
+    { from: "/zh-CN", choose: "English", to: "/", abbreviation: "EN" },
+    { from: "/docs/cli", choose: "简体中文", to: "/zh-CN/docs/cli", abbreviation: "ZH" },
+  ];
+  for (const { from, choose, to, abbreviation } of cases) {
+    test(`switches from ${from} to ${to} with taps`, async ({ page, baseURL }) => {
+      await page.goto(from);
+      await languageButton(page).tap();
+      await expect(page.getByRole("menu")).toBeInViewport({ ratio: 1 });
+      await page.getByRole("menuitemradio", { name: choose }).tap();
+
+      await expect(page).toHaveURL(new URL(to, baseURL).href);
+      await expect(languageButton(page)).toHaveText(abbreviation);
+    });
+  }
 });
 
 test("finds plugins by their Chinese and English listing text", async ({ page }) => {

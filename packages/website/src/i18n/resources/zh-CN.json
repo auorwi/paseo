@@ -13,7 +13,12 @@
     "backHome": "返回首页"
   },
   "languageSelector": {
-    "label": "语言"
+    "label": "语言",
+    "current": "语言：{{language}}",
+    "names": {
+      "en": "英语",
+      "zh-CN": "简体中文"
+    }
   },
   "nav": {
     "plugins": "插件",
@@ -322,7 +327,7 @@
     "metaTitle": "Paseo – 随时随地运行 Claude Code、Codex、Copilot、OpenCode",
     "metaDescription": "面向 Claude Code、Codex、OpenCode、Pi 以及另外 30 多个编程 Agent 的开源应用。在你自己的机器上并行运行多个 Agent。编辑器、终端、diff、拉取请求和浏览器集于一个窗口。桌面端一次下载即可使用，iOS 和 Android 上提供完整应用。",
     "title": "面向 Agent 的<br/>开发环境",
-    "subtitle": "同时运行多个编程 Agent，<mobileBreak/><wideSpace/>在任何机器上。<br/>在桌前，也在手机上。"
+    "subtitle": "同时运行多个编程 Agent，<mobileBreak/>在任何机器上。<br/>在桌前，也在手机上。"
   },
   "agents": {
     "metaTitle": "支持的 Agent – Paseo 可运行的所有编程 Agent",

@@ -1,5 +1,6 @@
 import type { PluginText } from "./text.js";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
+import type { PluginSerializableIcon } from "./icons.js";
 import type { PluginRpcContract } from "./rpc.js";
 
 export interface PluginTheme {
@@ -74,7 +75,7 @@ export interface PluginThemeContribution<Text extends PluginText = string> {
 export interface PluginAttachmentSourceContribution<Text extends PluginText = string> {
   id: string;
   title: Text;
-  icon: string;
+  icon: PluginSerializableIcon;
   pickerTitle: Text;
   searchPlaceholder: Text;
   search: PluginRpcContract;

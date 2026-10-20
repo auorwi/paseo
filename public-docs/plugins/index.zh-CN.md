@@ -180,7 +180,7 @@ client.addCommandCenterItem({
 });
 ```
 
-`icon` 是一个 [Lucide](https://lucide.dev/icons/) 图标名称。
+`icon` 可以是 [Lucide](https://lucide.dev/icons/) 图标名称、内联 SVG 或组件。参见[图标](/docs/plugins/reference#icons)。
 
 ## 编辑并重新加载 {#edit-and-reload}
 

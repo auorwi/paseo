@@ -35,7 +35,7 @@ nav: 发布
 
 ### 其他语言 {#other-languages}
 
-网站以英文和简体中文显示展示页。英文是必需的；翻译是可选的。在 `paseo-plugin.json` 中添加翻译后的展示文本，以语言标签为键：
+展示页以英文和简体中文显示。英文是必需的，翻译是可选的。在 `paseo-plugin.json` 中添加翻译后的 `name` 和 `description`，以语言标签为键：
 
 ```json
 {
@@ -48,9 +48,9 @@ nav: 发布
 }
 ```
 
-每个字段都是可选的。缺少翻译后的 `name` 或 `description` 时，会显示英文的值。
+每个字段都是可选的，缺少的字段会显示英文。注册表在发布插件时检查 `translations`：键必须是除 `en` 之外的标准语言标签，每个值只能设置 `name` 或 `description`，且必须是非空字符串。Paseo 本身不读取 `translations`，因此这里的错误会导致发布失败，而不会影响安装。
 
-要翻译概览，请在 `OVERVIEW.md` 旁边放一份以语言命名的完整副本，例如 `OVERVIEW.zh-CN.md`，并把它包含在发布的包中。脚手架的 `files` 列表已经包含 `OVERVIEW.*.md`。使用该语言的读者会看到翻译后的概览；没有翻译时，他们会看到英文概览和一条提示。请让翻译与 `OVERVIEW.md` 保持同步；上面的概览规则同样适用于它。
+要翻译概览，请在 `OVERVIEW.md` 旁边发布一份以语言命名的完整副本，例如 `OVERVIEW.zh-CN.md`。脚手架的 `files` 列表已经包含 `OVERVIEW.*.md`。当标签是语言代码为两个或三个字母、且不是 `en` 的标准语言标签时，注册表会把 `OVERVIEW.<标签>.md` 当作翻译，并忽略 `OVERVIEW.backup.md`、`OVERVIEW.zh-cn.md` 这类其他名称。`OVERVIEW.old.md` 这样的三字母名称会被当作一种语言，因此不要用它命名非翻译文件。使用该语言的读者会看到翻译；其他读者会看到英文概览和一条提示。上面的概览规则同样适用于翻译，因此 `OVERVIEW.md` 变更时请同步更新翻译。审查者可以在注册表中补充或修正翻译。
 
 ## 图标和截图 {#icons-and-screenshots}
 

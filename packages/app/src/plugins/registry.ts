@@ -145,7 +145,13 @@ export class PluginRegistry {
       }
     }
     this.byHost.set(serverId, installed);
-    this.publish();
+    if (
+      installed.length !== catalog.length ||
+      installed.length !== previous.length ||
+      installed.some((plugin, index) => plugin !== previous[index])
+    ) {
+      this.publish();
+    }
     const installedTimelineBundles = installed
       .filter((plugin) => plugin.timelineTransformers.length > 0)
       .map((plugin) => `${plugin.id}\0${plugin.clientBundle}`);

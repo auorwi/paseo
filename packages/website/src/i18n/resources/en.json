@@ -13,7 +13,12 @@
     "backHome": "Go to the homepage"
   },
   "languageSelector": {
-    "label": "Language"
+    "label": "Language",
+    "current": "Language: {{language}}",
+    "names": {
+      "en": "English",
+      "zh-CN": "Simplified Chinese"
+    }
   },
   "nav": {
     "plugins": "Plugins",

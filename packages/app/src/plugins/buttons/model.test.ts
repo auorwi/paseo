@@ -34,8 +34,9 @@ function installation(): InstalledPlugin {
 
 function store() {
   return new PluginButtonStore({
-    validateIconName(name) {
-      if (name !== "Scan") throw new Error("Unknown icon");
+    parseIcon(icon) {
+      if (icon !== "Scan") throw new Error("Unknown icon");
+      return icon;
     },
   });
 }
