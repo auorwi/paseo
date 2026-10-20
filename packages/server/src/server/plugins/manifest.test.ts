@@ -68,11 +68,6 @@ describe("plugin manifest", () => {
     { id: "INVALID" },
     { description: 42 },
     { requirements: { paseoo: ">=0.11.0" } },
-    { translations: { "zh-cn": { name: "示例" } } },
-    { translations: { en: { name: "Example" } } },
-    { translations: { "not a tag": { name: "Example" } } },
-    { translations: { "zh-CN": { name: "  " } } },
-    { translations: { "zh-CN": { desc: "示例" } } },
   ])("rejects invalid known fields: %j", async (fields) => {
     const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-manifest-"));
     directories.push(directory);
@@ -133,17 +128,20 @@ describe("plugin manifest", () => {
     await expect(readPluginManifest(directory)).rejects.toThrow();
   });
 
-  it("reads listing translations with each field optional", async () => {
+  // Listing translations are read by the registry when it publishes, never by the daemon, so a
+  // value the registry would refuse must not stop a plugin from installing.
+  it.each([
+    { "zh-cn": { name: "示例" } },
+    { "zh-CN": { desc: "示例" } },
+    "zh-CN",
+  ])("ignores listing translations: %j", async (translations) => {
     const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-manifest-"));
     directories.push(directory);
-    const manifest = {
-      id: "described",
-      name: "Reviewer",
-      description: "Reviews changes before merge",
-      translations: { "zh-CN": { description: "合并前审查改动" } },
-    };
-    await writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify(manifest));
-    await expect(readPluginManifest(directory)).resolves.toEqual(manifest);
+    await writeFile(
+      path.join(directory, "paseo-plugin.json"),
+      JSON.stringify({ id: "described", translations }),
+    );
+    await expect(readPluginManifest(directory)).resolves.toEqual({ id: "described" });
   });
 
   it("accepts only non-empty argv arrays for build commands", async () => {

@@ -50,22 +50,20 @@ my-plugin/
 }
 ```
 
-| 字段           | 是否必填 | 行为                                                     |
-| -------------- | -------- | -------------------------------------------------------- |
-| `id`           | 是       | 默认的安装 ID。                                          |
-| `name`         | 否       | 注册表和网站使用的非空显示名称；与安装 ID 无关。         |
-| `icon`         | 否       | 插件包内 PNG 文件的相对路径。                            |
-| `media`        | 否       | 包内图片或视频路径的数组，或 HTTPS URL。空数组是有效的。 |
-| `description`  | 否       | 在 **设置 → 插件** 中显示在插件 ID 下方的非空摘要。      |
-| `translations` | 否       | 其他语言的展示 `name` 和 `description`，以语言标签为键。 |
-| `requirements` | 否       | 支持的 Paseo 版本，见下文。                              |
-| `build`        | 否       | 准备命令，见 CLI 参考。                                  |
+| 字段           | 是否必填 | 行为                                                                                                       |
+| -------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `id`           | 是       | 默认的安装 ID。                                                                                            |
+| `name`         | 否       | 注册表和网站使用的非空显示名称；与安装 ID 无关。                                                           |
+| `icon`         | 否       | 插件包内 PNG 文件的相对路径。                                                                              |
+| `media`        | 否       | 包内图片或视频路径的数组，或 HTTPS URL。空数组是有效的。                                                   |
+| `description`  | 否       | 在 **设置 → 插件** 中显示在插件 ID 下方的非空摘要。                                                        |
+| `translations` | 否       | 其他语言的展示文本，由注册表读取，Paseo 会忽略它。见[其他语言](/docs/plugins/publishing#other-languages)。 |
+| `requirements` | 否       | 支持的 Paseo 版本，见下文。                                                                                |
+| `build`        | 否       | 准备命令，见 CLI 参考。                                                                                    |
 
 路径相对于 `paseo-plugin.json`，使用正斜杠，并且不能包含 `..` 片段。即使 `media` 在运行时 manifest 中是可选的，可视化插件的注册表展示页仍然需要一张界面图片。接受的格式和展示页要求见[图标和截图](/docs/plugins/publishing#icons-and-screenshots)。Paseo 会校验这些引用，但不会打开本地资源或获取 URL。
 
 未知的顶层字段会被忽略。已知字段仍然会被校验，`requirements` 中的未知键会被拒绝，以免拼写错误的约束悄悄跳过兼容性检查。使用 `name`、`icon` 或 `media` 的 manifest 需要 Paseo 0.11.0 或更高版本；较旧的 daemon 会在安装时拒绝这些字段。
-
-`translations` 的键是除 `en` 之外的标准语言标签，例如 `zh-CN`。每个值可以设置 `name`、`description` 或两者，必须是非空字符串；其他键会被拒绝。展示页如何使用它们，见[其他语言](/docs/plugins/publishing#other-languages)。
 
 ### 版本要求 {#requirements}
 

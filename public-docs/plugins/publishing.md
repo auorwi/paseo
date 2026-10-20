@@ -51,8 +51,8 @@ Also supply a one-sentence description: use `package.json`'s `description` for n
 
 ### Other languages
 
-The website shows listings in English and Simplified Chinese. English is required; translations are
-optional. Add translated listing text to `paseo-plugin.json`, keyed by language tag:
+Listings show in English and Simplified Chinese. English is required and translations are optional.
+Add a translated `name` and `description` to `paseo-plugin.json`, keyed by language tag:
 
 ```json
 {
@@ -65,13 +65,18 @@ optional. Add translated listing text to `paseo-plugin.json`, keyed by language 
 }
 ```
 
-Each field is optional. A missing translated `name` or `description` shows the English one.
+Each field is optional, and a missing one shows the English text. The registry checks
+`translations` when it publishes the plugin: keys are canonical language tags other than `en`, and
+each value sets only `name` or `description`, as non-empty strings. Paseo itself does not read
+`translations`, so a mistake there fails publication, not installation.
 
-To translate the overview, put a whole copy beside `OVERVIEW.md` named for the language, such as
-`OVERVIEW.zh-CN.md`, and include it in the published package. The scaffold's `files` list already
-includes `OVERVIEW.*.md`. Readers in that language see the translated overview; without one, they
-see the English overview with a notice. Keep the translation in step with `OVERVIEW.md`; the overview rules
-above apply to it too.
+To translate the overview, publish a complete copy named for the language next to `OVERVIEW.md`,
+such as `OVERVIEW.zh-CN.md`. The scaffold's `files` list already includes `OVERVIEW.*.md`. The
+registry reads every `OVERVIEW.<tag>.md` as a translation and fails publication on a tag that is not
+a canonical language tag, so do not name other files that way. Readers in that language see the
+translation; others see the English overview with a notice. The overview rules above apply to
+translations, so update them when `OVERVIEW.md` changes. Reviewers can add or correct translations
+in the registry.
 
 ## Icons and screenshots
 
