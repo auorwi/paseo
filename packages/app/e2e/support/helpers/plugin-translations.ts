@@ -1,3 +1,4 @@
+import { installDeveloperToastDismissal } from "../developer-ui.mjs";
 import { seedWorkspace } from "./seed-client";
 import { buildAgentRoute } from "./mock-agent";
 import { openCommandCenter } from "./command-center";
@@ -54,6 +55,7 @@ export async function verifyPluginTranslations(page: Page, info: TestInfo) {
       viewport: { width: 1440, height: 1000 },
     });
     const second = await secondContext.newPage();
+    await installDeveloperToastDismissal(second);
     await second.goto(page.url());
     await expect(second.getByText("App language: en", { exact: true })).toBeVisible();
     await chooseChinese(second);
@@ -94,7 +96,7 @@ export async function verifyPluginTranslations(page: Page, info: TestInfo) {
     await page.getByRole("button", { name: "Add note", exact: true }).click();
     await expect(page.getByText("2 notes", { exact: true })).toBeVisible();
   } finally {
-    await secondContext?.close();
+    await secondContext?.close().catch(() => undefined);
     await client.removePlugin("translation-notes").catch(() => undefined);
     await client.patchDaemonConfig({ pluginsEnabled: config.config.pluginsEnabled });
     await client.close();
