@@ -32,7 +32,7 @@ export function hasOpenAgentTab(labels: Record<string, unknown> | null | undefin
   );
 }
 
-// COMPAT(localParentLabels): added in v0.12.0; remove after 2027-04-20 once stored local parent labels are qualified.
+// Absent parent server label means the same host.
 export function getParentAddressFromLabels(
   labels: Record<string, unknown> | null | undefined,
   serverId: string,
