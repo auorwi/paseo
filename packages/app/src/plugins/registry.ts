@@ -1,3 +1,5 @@
+import { PluginTranslationRuntime } from "@getpaseo/plugin/client/host";
+import { i18n } from "@/i18n/i18next";
 import type { AudioEngine } from "@/audio";
 import { useMemo, useSyncExternalStore } from "react";
 import { QueryClient } from "@tanstack/react-query";
@@ -20,6 +22,7 @@ export class PluginRegistry {
 
   constructor(
     private readonly dependencies: {
+      localeSource: import("@getpaseo/plugin/client/host").PluginLocaleSource;
       version: string | null;
       createRuntime: typeof createPluginClientRuntime;
     },
@@ -81,6 +84,8 @@ export class PluginRegistry {
         const client = options.client;
         installation = {
           lifetime: new AbortController(),
+          locale: this.dependencies.localeSource.getLocale(),
+          i18n: new PluginTranslationRuntime(this.dependencies.localeSource),
           paseo: createPaseoApi(client),
           invoke: (method, input) => client.invokePluginRpc(entry.id, method, input),
           id: entry.id,
@@ -101,6 +106,10 @@ export class PluginRegistry {
           timelineTransformers: [],
           timelineRenderers: [],
         };
+        const unsubscribeTranslations = installation.i18n.subscribe(() => this.publish());
+        installation.lifetime.signal.addEventListener("abort", unsubscribeTranslations, {
+          once: true,
+        });
         const runtime = this.dependencies.createRuntime(installation, options.audio);
         const evaluated = runPluginClientBundle(entry.id, entry.clientBundle, runtime, () =>
           this.publish(),
@@ -120,6 +129,7 @@ export class PluginRegistry {
         return [installation];
       } catch (error) {
         installation?.lifetime.abort();
+        installation?.i18n.dispose();
         void installation?.paseo
           .dispose()
           .catch((failure) => console.warn(`[Plugins] API cleanup failed for ${key}`, failure));
@@ -160,6 +170,7 @@ export class PluginRegistry {
     if (this.disposed.has(plugin)) return;
     this.disposed.add(plugin);
     plugin.lifetime.abort();
+    plugin.i18n.dispose();
     plugin.queryClient.clear();
     try {
       void Promise.resolve(plugin.cleanup()).catch((error) => {
@@ -173,6 +184,9 @@ export class PluginRegistry {
   private publish(): void {
     this.snapshot = [...this.byHost.values()]
       .flat()
+      // A new presentation snapshot invalidates label selectors without replacing the installation lifetime.
+      // eslint-disable-next-line no-map-spread
+      .map((plugin) => ({ ...plugin, locale: plugin.i18n.locale }))
       .sort((left, right) =>
         `${left.serverId}/${left.id}`.localeCompare(`${right.serverId}/${right.id}`),
       );
@@ -181,6 +195,15 @@ export class PluginRegistry {
 }
 
 export const pluginRegistry = new PluginRegistry({
+  localeSource: {
+    getLocale: () => i18n.resolvedLanguage ?? i18n.language,
+    subscribe: (listener) => {
+      i18n.on("languageChanged", listener);
+      return () => {
+        i18n.off("languageChanged", listener);
+      };
+    },
+  },
   version: resolveAppVersion(),
   createRuntime: createPluginClientRuntime,
 });

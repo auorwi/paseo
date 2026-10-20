@@ -20,3 +20,5 @@ export {
   type PluginAttachmentSearchPayload,
 } from "./attachments.js";
 export { defineRpc, type PluginRpcContract, type RpcInput, type RpcOutput } from "./rpc.js";
+
+export type { PluginText, PluginMessage } from "./text.js";

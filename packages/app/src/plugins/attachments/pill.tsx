@@ -1,3 +1,4 @@
+import { useInstalledPlugin } from "../registry";
 import { useCallback, useMemo } from "react";
 import { withUnistyles } from "react-native-unistyles";
 import { AttachmentLabel, AttachmentPill } from "@/components/attachment-pill";
@@ -21,6 +22,7 @@ function ResourceIcon({
 const ThemedResourceIcon = withUnistyles(ResourceIcon);
 
 interface PluginResourceAttachmentPillProps {
+  serverId: string;
   attachment: PluginResourceComposerAttachment;
   index: number;
   disabled: boolean;
@@ -31,6 +33,7 @@ interface PluginResourceAttachmentPillProps {
 }
 
 export function PluginResourceAttachmentPill({
+  serverId,
   attachment,
   index,
   disabled,
@@ -39,6 +42,13 @@ export function PluginResourceAttachmentPill({
   openLabel,
   removeLabel,
 }: PluginResourceAttachmentPillProps) {
+  const plugin = useInstalledPlugin(serverId, attachment.pluginId);
+  const source = plugin?.attachmentSources.find(
+    (candidate) => candidate.id === attachment.sourceId,
+  );
+  // Keep the saved label when the source is no longer installed.
+  const sourceTitle =
+    plugin && source ? plugin.i18n.resolve(source.title, plugin.locale) : attachment.sourceTitle;
   const Icon = resolvePluginIcon(attachment.sourceIcon);
   const handleOpen = useCallback(() => onOpen(attachment), [attachment, onOpen]);
   const handleRemove = useCallback(() => onRemove(index), [index, onRemove]);
@@ -51,14 +61,14 @@ export function PluginResourceAttachmentPill({
       testID="composer-plugin-resource-attachment-pill"
       onOpen={handleOpen}
       onRemove={handleRemove}
-      openAccessibilityLabel={openLabel(attachment.sourceTitle, attachment.item.identifier)}
-      removeAccessibilityLabel={removeLabel(attachment.sourceTitle, attachment.item.identifier)}
+      openAccessibilityLabel={openLabel(sourceTitle, attachment.item.identifier)}
+      removeAccessibilityLabel={removeLabel(sourceTitle, attachment.item.identifier)}
       disabled={disabled}
     >
       <AttachmentLabel
         icon={icon}
         title={attachment.item.title}
-        subtitle={`${attachment.sourceTitle} ${attachment.item.identifier}`}
+        subtitle={`${sourceTitle} ${attachment.item.identifier}`}
       />
     </AttachmentPill>
   );

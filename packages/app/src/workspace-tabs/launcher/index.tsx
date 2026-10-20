@@ -211,7 +211,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         };
         pluginItems.push({
           id: `plugin:${plugin.id}:${panel.id}`,
-          label: panel.title,
+          label: plugin.i18n.resolve(panel.title, plugin.locale),
           Icon: resolvePluginIcon(panel.icon),
           disabled: false,
           panelKind: "plugin",
