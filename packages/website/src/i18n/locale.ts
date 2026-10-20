@@ -12,6 +12,12 @@ export const LANGUAGE_NAMES: Record<Locale, string> = {
   "zh-CN": "简体中文",
 };
 
+/** Each language abbreviated, for the closed language selector. */
+export const LANGUAGE_ABBREVIATIONS: Record<Locale, string> = {
+  en: "EN",
+  "zh-CN": "ZH",
+};
+
 /** `og:locale` values, which use an underscore and a region. */
 export const OPEN_GRAPH_LOCALES: Record<Locale, string> = {
   en: "en_US",
