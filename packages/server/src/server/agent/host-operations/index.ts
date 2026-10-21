@@ -1,5 +1,5 @@
 import { parentAddressLabels } from "@getpaseo/protocol/agent-labels";
-import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import type { ActiveTurnBehavior, AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
@@ -12,6 +12,9 @@ import type { HostDirectory } from "@getpaseo/protocol/hosts";
 import { OWNER_PERMISSIONS } from "../../authorization/index.js";
 import type { ConnectedHosts } from "../../connected-hosts/index.js";
 import { resolveRequiredProviderModel } from "../mcp-shared.js";
+import { selectAgentListItems } from "../agent-projections.js";
+import { summarizeAgentActivity } from "../activity-curator.js";
+import { expandUserPath } from "../../path-utils.js";
 import type { PaseoToolExecutionContext, PaseoToolResult } from "../tools/types.js";
 
 export type HostOperation = (
@@ -22,6 +25,10 @@ export interface HostOperations {
   createAgent: HostOperation;
   createWorkspace: HostOperation;
   listWorkspaces: HostOperation;
+  sendPrompt: HostOperation;
+  getStatus: HostOperation;
+  getActivity: HostOperation;
+  listAgents: HostOperation;
   wait(agentId: string, signal: AbortSignal): Promise<WaitForFinishResult>;
   observe(
     agentId: string,
@@ -196,6 +203,69 @@ export function createHostResolver(input: {
               workspaceId: snapshot.workspaceId,
               currentModeId: snapshot.currentModeId,
               availableModes: snapshot.availableModes,
+            });
+          },
+          async sendPrompt(args) {
+            const agentId = args.agentId as string;
+            if (args.sessionMode !== undefined)
+              await client.setAgentMode(agentId, args.sessionMode as string);
+            await client.sendMessage(agentId, args.prompt as string, {
+              sourceAgentId: input.callerAgentId,
+              activeTurnBehavior:
+                (args.activeTurnBehavior as ActiveTurnBehavior | undefined) ??
+                (input.callerAgentId ? "steer" : "interrupt"),
+            });
+            const agent = (await client.fetchAgent(agentId))?.agent;
+            if (!agent) throw new Error(`Agent ${agentId} not found`);
+            return result({
+              success: true,
+              status: agent.status,
+              guidance:
+                input.callerAgentId && args.notifyOnFinish !== false
+                  ? "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
+                  : "Dispatch acknowledged. Observe completion using get_agent_status/get_agent_activity or SDK/RPC subscriptions and wait APIs.",
+            });
+          },
+          async getStatus(args) {
+            const agent = (await client.fetchAgent(args.agentId as string))?.agent;
+            if (!agent) throw new Error(`Agent ${args.agentId} not found`);
+            return result({ status: agent.status, snapshot: agent });
+          },
+          async getActivity(args) {
+            const agentId = args.agentId as string;
+            const limit = args.limit as number | undefined;
+            const timeline = await client.fetchAgentTimeline(agentId, {
+              direction: "tail",
+              limit: limit ?? 0,
+            });
+            const agent = (await client.fetchAgent(agentId))?.agent;
+            if (!agent) throw new Error(`Agent ${agentId} not found`);
+            return result({
+              agentId,
+              ...summarizeAgentActivity(
+                timeline.entries.map((entry) => entry.item),
+                limit,
+              ),
+              currentModeId: agent.currentModeId,
+            });
+          },
+          async listAgents(args) {
+            const { entries } = await client.fetchAgents({
+              includeBackground: args.includeBackground === true,
+              filter: { includeArchived: args.includeArchived === true },
+            });
+            return result({
+              agents: selectAgentListItems(
+                entries.map((entry) => entry.agent),
+                {
+                  cwd: (args.cwd as string | undefined)?.trim()
+                    ? expandUserPath(args.cwd as string)
+                    : undefined,
+                  statuses: args.statuses as AgentSnapshotPayload["status"][] | undefined,
+                  sinceHours: args.sinceHours as number | undefined,
+                  limit: args.limit as number | undefined,
+                },
+              ),
             });
           },
           async listWorkspaces(args) {

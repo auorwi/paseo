@@ -2,6 +2,7 @@ import {
   createHostResolver,
   waitForPermissionChange,
   type HostOperation,
+  type HostOperations,
   type ToolHosts,
 } from "../host-operations/index.js";
 import { AgentDirectory } from "../directory.js";
@@ -22,14 +23,12 @@ import {
   AgentSnapshotPayloadSchema,
   WorkspaceScriptPayloadSchema,
 } from "../../messages.js";
-import type { AgentListItemPayload } from "../../messages.js";
 import {
   buildStoredAgentPayload,
-  toAgentListItemPayload,
+  selectAgentListItems,
   toAgentPayload,
 } from "../agent-projections.js";
-import { curateAgentActivity } from "../activity-curator.js";
-import { selectItemsByProjectedLimit } from "../timeline-projection.js";
+import { summarizeAgentActivity } from "../activity-curator.js";
 import type { AgentStorage } from "../agent-storage.js";
 import { AgentNotFoundError, ensureAgentLoaded } from "../agent-loading.js";
 import { isStoredAgentProviderAvailable } from "../../persistence-hooks.js";
@@ -178,24 +177,6 @@ function settledStatus(status: string): "error" | "idle" {
   return status === "error" ? "error" : "idle";
 }
 
-function parseTimestamp(value: string | null | undefined): number {
-  if (!value) {
-    return 0;
-  }
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function resolveAgentListActivityTime(agent: AgentListItemPayload): number {
-  return Math.max(
-    parseTimestamp(agent.updatedAt),
-    parseTimestamp(agent.lastUserMessageAt),
-    parseTimestamp(agent.attentionTimestamp),
-    parseTimestamp(agent.archivedAt),
-    parseTimestamp(agent.createdAt),
-  );
-}
-
 interface ProviderSummary {
   id: AgentProvider;
   label: string;
@@ -339,28 +320,6 @@ function toProviderSummary(entry: {
     status: entry.status === "ready" ? "available" : entry.status,
     ...(entry.error ? { error: entry.error } : {}),
   };
-}
-
-function compareAgentListItems(a: AgentListItemPayload, b: AgentListItemPayload): number {
-  const attentionDelta =
-    Number(b.requiresAttention ?? false) - Number(a.requiresAttention ?? false);
-  if (attentionDelta !== 0) {
-    return attentionDelta;
-  }
-
-  const statusOrder = {
-    running: 0,
-    initializing: 1,
-    idle: 2,
-    error: 3,
-    closed: 4,
-  } as Record<string, number>;
-  const statusDelta = (statusOrder[a.status] ?? 999) - (statusOrder[b.status] ?? 999);
-  if (statusDelta !== 0) {
-    return statusDelta;
-  }
-
-  return resolveAgentListActivityTime(b) - resolveAgentListActivityTime(a);
 }
 
 function resolveScheduleProviderAndModel(params: {
@@ -704,7 +663,11 @@ function createToolCatalog(
     ["create_agent", "createAgent"],
     ["create_workspace", "createWorkspace"],
     ["list_workspaces", "listWorkspaces"],
-  ] as const);
+    ["send_agent_prompt", "sendPrompt"],
+    ["get_agent_status", "getStatus"],
+    ["get_agent_activity", "getActivity"],
+    ["list_agents", "listAgents"],
+  ] as const satisfies ReadonlyArray<readonly [string, keyof HostOperations]>);
   const hostResolver = createHostResolver({
     serverId: options.serverId ?? "self",
     callerAgentId,
@@ -718,6 +681,10 @@ function createToolCatalog(
       createWorkspace: (args, context) =>
         localHostOperations.get("create_workspace")!(args, context),
       listWorkspaces: (args, context) => localHostOperations.get("list_workspaces")!(args, context),
+      sendPrompt: (args, context) => localHostOperations.get("send_agent_prompt")!(args, context),
+      getStatus: (args, context) => localHostOperations.get("get_agent_status")!(args, context),
+      getActivity: (args, context) => localHostOperations.get("get_agent_activity")!(args, context),
+      listAgents: (args, context) => localHostOperations.get("list_agents")!(args, context),
       async observe(agentId, handler, signal) {
         const unsubscribe = agentManager.subscribe(
           (event) => {
@@ -759,9 +726,7 @@ function createToolCatalog(
     if (!isPaseoToolEnabled(options.paseoToolPolicy, name)) {
       return;
     }
-    const operation = hostTools.get(
-      name as "create_agent" | "create_workspace" | "list_workspaces",
-    );
+    const operation = hostTools.get(name as Parameters<typeof hostTools.get>[0]);
     if (operation) {
       localHostOperations.set(name, handler);
       const original = config.inputSchema;
@@ -785,21 +750,26 @@ function createToolCatalog(
           const response = await hostResolver.use(serverId, (host) =>
             host[operation](input, context),
           );
-          if (name === "create_agent" && callerAgentId && input.notifyOnFinish !== false) {
-            const created = response.structuredContent as { agentId: string };
+          let childAgentId: string | undefined;
+          if (name === "create_agent") {
+            childAgentId = (response.structuredContent as { agentId: string }).agentId;
+          } else if (name === "send_agent_prompt" && destination !== options.serverId) {
+            childAgentId = input.agentId as string;
+          }
+          if (childAgentId && callerAgentId && input.notifyOnFinish !== false) {
             setupFinishWait({
               agentManager,
               agentStorage,
               originServerId: options.serverId,
               childServerId: destination,
-              childAgentId: created.agentId,
+              childAgentId,
               callerAgentId,
               logger: childLogger,
               wait: (signal) =>
-                hostResolver.use(destination, (host) => host.wait(created.agentId, signal)),
+                hostResolver.use(destination, (host) => host.wait(childAgentId, signal)),
               afterPermission: (requestId, signal) =>
                 hostResolver.use(destination, (host) =>
-                  waitForPermissionChange(host, created.agentId, requestId, signal),
+                  waitForPermissionChange(host, childAgentId, requestId, signal),
                 ),
             });
           }
@@ -2309,8 +2279,6 @@ function createToolCatalog(
     }) => {
       const callerCwd = callerAgentId ? resolveCallerAgent()?.cwd : undefined;
       const requestedCwd = cwd?.trim() ? expandUserPath(cwd) : callerCwd;
-      const statusFilter = statuses && statuses.length > 0 ? new Set(statuses) : null;
-      const sinceMs = Date.now() - sinceHours * 60 * 60 * 1000;
       if (!options.workspaceRegistry) throw new Error("Workspace registry is not configured");
       const directory = new AgentDirectory({
         manager: agentManager,
@@ -2330,13 +2298,10 @@ function createToolCatalog(
             new Set(providerSnapshotManager.listRegisteredProviderIds()),
           ),
       });
-      const agents = (await directory.list({ includeBackground, includeArchived }))
-        .map(toAgentListItemPayload)
-        .filter((agent) => !requestedCwd || isSameOrDescendantPath(requestedCwd, agent.cwd))
-        .filter((agent) => !statusFilter || statusFilter.has(agent.status))
-        .filter((agent) => !agent.archivedAt || resolveAgentListActivityTime(agent) >= sinceMs)
-        .sort(compareAgentListItems)
-        .slice(0, limit);
+      const agents = selectAgentListItems(
+        await directory.list({ includeBackground, includeArchived }),
+        { cwd: requestedCwd, statuses, sinceHours, limit },
+      );
 
       return {
         content: [],
@@ -3333,29 +3298,12 @@ function createToolCatalog(
       const timeline = agentManager.getTimeline(agentId);
       const snapshot = agentManager.getAgent(agentId);
 
-      const selection = selectItemsByProjectedLimit({
-        items: timeline,
-        direction: "tail",
-        limit: limit ?? 0,
-      });
-      const curatedContent = curateAgentActivity(selection.items);
-      const { totalProjected, shownProjected } = selection;
-
-      const noun = totalProjected === 1 ? "activity" : "activities";
-      const countHeader =
-        limit && shownProjected < totalProjected
-          ? `Showing ${shownProjected} of ${totalProjected} ${noun} (limited to ${limit})`
-          : `Showing all ${totalProjected} ${noun}`;
-
-      const contentWithCount = `${countHeader}\n\n${curatedContent}`;
-
       return {
         content: [],
         structuredContent: ensureValidJson({
           agentId,
-          updateCount: timeline.length,
+          ...summarizeAgentActivity(timeline, limit),
           currentModeId: snapshot?.currentModeId ?? null,
-          content: contentWithCount,
         }),
       };
     },
