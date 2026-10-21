@@ -149,10 +149,9 @@ async function expectVerticalOrder<Key extends string>(
   await expect
     .poll(
       async () => {
-        // One row at a time: concurrent actions that all run the developer toast handler do not
-        // all resume, and the poll then waits out its timeout.
-        const measured: { key: Key; top: number | null }[] = [];
-        for (const key of keys) measured.push({ key, top: await rowTop(locate(key)) });
+        const measured = await Promise.all(
+          keys.map(async (key) => ({ key, top: await rowTop(locate(key)) })),
+        );
         if (!measured.every((entry): entry is { key: Key; top: number } => entry.top !== null))
           return null;
         return measured.sort((a, b) => a.top - b.top).map((entry) => entry.key);
