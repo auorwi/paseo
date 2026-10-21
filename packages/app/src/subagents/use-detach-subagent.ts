@@ -1,4 +1,3 @@
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import type { AgentAddress } from "@getpaseo/protocol/addresses";
 import { useCallback } from "react";
 import { useToast } from "@/contexts/toast-context";
@@ -16,13 +15,7 @@ export type {
   ResolveDetachSubagentDialogInput,
 } from "./detach-subagent";
 
-export interface UseDetachSubagentInput {
-  serverId: string;
-}
-
-export function useDetachSubagent({
-  serverId: originServerId,
-}: UseDetachSubagentInput): (address: AgentAddress) => void {
+export function useDetachSubagent(): (address: AgentAddress) => void {
   const toast = useToast();
 
   return useCallback(
@@ -34,7 +27,6 @@ export function useDetachSubagent({
             useSessionStore.getState().sessions[serverId]?.agents?.get(id),
           confirm: confirmDialog,
           detachAgent: async ({ serverId: targetServerId, agentId }) => {
-            getHostRuntimeStore().requireHostRoute(targetServerId, originServerId);
             const client = useSessionStore.getState().sessions[targetServerId]?.client;
             if (!client) {
               throw new Error(i18n.t("workspaceSetup.errors.hostDisconnected"));
@@ -50,6 +42,6 @@ export function useDetachSubagent({
         },
       );
     },
-    [originServerId, toast],
+    [toast],
   );
 }

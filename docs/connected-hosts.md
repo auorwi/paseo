@@ -37,8 +37,10 @@ destination workspace and explicit provider/model. Caller filesystem defaults ap
 calling daemon.
 
 The parent’s Subagents track shows qualified children across connected hosts. Opening a child uses
-the ordinary conversation. The app retains one route per destination; a request through another
-origin reports a conflict. It does not substitute an existing direct connection.
+the ordinary conversation on the destination's session. The runtime selects among that host's
+connection candidates, including direct connections and routes discovered through another daemon.
+Adding a direct connection to a discovered host adds another candidate. If no candidate connects,
+the destination workspace keeps its existing disconnected or reconnecting behavior.
 
 Finish notifications use the existing idle wait, including a pending initial run or an already idle
 child. They name the server and agent. A daemon restart or route loss ends an outstanding notification

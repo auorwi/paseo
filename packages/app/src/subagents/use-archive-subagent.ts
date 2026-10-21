@@ -1,4 +1,3 @@
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import type { AgentAddress } from "@getpaseo/protocol/addresses";
 import { useCallback } from "react";
 import { useToast } from "@/contexts/toast-context";
@@ -15,13 +14,7 @@ export type {
   ResolveArchiveSubagentDialogInput,
 } from "./archive-subagent";
 
-export interface UseArchiveSubagentInput {
-  serverId: string;
-}
-
-export function useArchiveSubagent({
-  serverId: originServerId,
-}: UseArchiveSubagentInput): (address: AgentAddress) => void {
+export function useArchiveSubagent(): (address: AgentAddress) => void {
   const { archiveAgent } = useArchiveAgent();
   const toast = useToast();
 
@@ -33,16 +26,13 @@ export function useArchiveSubagent({
           getSubagent: (id): ResolveArchiveSubagentDialogInput | undefined =>
             useSessionStore.getState().sessions[serverId]?.agents?.get(id),
           confirm: confirmDialog,
-          archiveAgent: async (address) => {
-            getHostRuntimeStore().requireHostRoute(address.serverId, originServerId);
-            await archiveAgent(address);
-          },
+          archiveAgent,
           reportError: (error) => {
             toast.error(toErrorMessage(error));
           },
         },
       );
     },
-    [archiveAgent, originServerId, toast],
+    [archiveAgent, toast],
   );
 }

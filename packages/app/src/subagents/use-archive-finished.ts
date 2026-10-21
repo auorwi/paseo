@@ -1,4 +1,3 @@
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { getParentAddressFromLabels } from "@getpaseo/protocol/agent-labels";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -43,10 +42,7 @@ export function useArchiveFinishedSubagents({
           if (parent?.serverId !== serverId || parent.agentId !== parentAgentId) return undefined;
           return { ...agent, parentAgentId: parent.agentId };
         },
-        archiveManagedSubagent: async (address) => {
-          getHostRuntimeStore().requireHostRoute(address.serverId, serverId);
-          await archiveAgent(address);
-        },
+        archiveManagedSubagent: archiveAgent,
         dismissProviderSubagents: (ids) => {
           useProviderSubagentStore.getState().hideFromTrack(serverId, parentAgentId, ids);
         },

@@ -170,7 +170,7 @@ export async function expectSubagentRowGone(page: Page, childId: string): Promis
 }
 
 export async function expectManagedSubagentUnarchived(
-  workspace: Pick<SeededWorkspace, "client">,
+  workspace: { client: Pick<SeededWorkspace["client"], "fetchAgent"> },
   childId: string,
 ): Promise<void> {
   await expect(workspace.client.fetchAgent({ agentId: childId })).resolves.toMatchObject({
@@ -179,7 +179,7 @@ export async function expectManagedSubagentUnarchived(
 }
 
 export async function expectManagedSubagentArchived(
-  workspace: Pick<SeededWorkspace, "client">,
+  workspace: { client: Pick<SeededWorkspace["client"], "fetchAgent"> },
   childId: string,
 ): Promise<void> {
   await expect
@@ -403,7 +403,12 @@ export async function delegateFleetThroughMcp() {
         settings: { modeId: "load-test" },
         initialPrompt: `Finish ${title}`,
       });
-      return { serverId: targetServerId, agentId: z.string().parse(result.agentId), title };
+      return {
+        serverId: targetServerId,
+        agentId: z.string().parse(result.agentId),
+        workspaceId,
+        title,
+      };
     };
     const local = await createChild(serverId, workspace.workspaceId, "MCP child on A");
     const remote = await createChild(
@@ -432,6 +437,7 @@ export async function delegateFleetThroughMcp() {
     });
     return {
       workspace,
+      destination,
       parent,
       serverId,
       local,

@@ -2236,12 +2236,6 @@ export class HostRuntimeStore {
     connection: HostConnection;
     existingClient?: DaemonClient;
   }): Promise<HostProfile> {
-    const retained = this.hosts.find((host) => host.serverId === input.serverId);
-    if (
-      retained?.connections.some((connection) => connection.type === "routed") &&
-      input.connection.type !== "routed"
-    )
-      throw new Error(`Host ${input.serverId} already has a retained routed connection`);
     const now = new Date().toISOString();
     const next = upsertHostConnectionInProfiles({
       profiles: this.hosts,
@@ -2395,17 +2389,6 @@ export class HostRuntimeStore {
     }
   }
 
-  /** A retained destination uses its selected route; another route is an explicit conflict. */
-  requireHostRoute(serverId: string, originServerId: string): void {
-    if (serverId === originServerId) return;
-    const connection = this.hosts.find((host) => host.serverId === serverId)?.connections[0];
-    if (connection?.type !== "routed" || connection.originServerId !== originServerId) {
-      throw new Error(
-        `Host ${serverId} is already connected through another route. Requested via ${originServerId}.`,
-      );
-    }
-  }
-
   private syncHostDiscovery(serverId: string): void {
     const client = this.getClient(serverId);
     const previous = this.hostObservations.get(serverId);
@@ -2425,24 +2408,18 @@ export class HostRuntimeStore {
       if (this.hostObservations.get(serverId)?.client !== client) return;
       for (const target of directory.hosts) {
         if (!target.serverId || target.serverId === serverId) continue;
-        if (!this.hosts.some((candidate) => candidate.serverId === target.serverId)) {
-          const now = new Date().toISOString();
-          const connection = {
+        const next = upsertHostConnectionInProfiles({
+          profiles: this.hosts,
+          serverId: target.serverId,
+          label: target.label ?? undefined,
+          connection: {
             id: `via:${serverId}`,
-            type: "routed" as const,
+            type: "routed",
             originServerId: serverId,
-          };
-          const profile: HostProfile = {
-            serverId: target.serverId,
-            label: target.label ?? target.serverId,
-            appearance: defaultHostAppearance(),
-            lifecycle: {},
-            connections: [connection],
-            preferredConnectionId: connection.id,
-            createdAt: now,
-            updatedAt: now,
-          };
-          this.setHostsAndSync([...this.hosts, profile]);
+          },
+        });
+        if (next !== this.hosts) {
+          this.setHostsAndSync(next);
           void this.persistHosts();
         }
         if (!this.fleetDirectoryDemand.has(target.serverId))
