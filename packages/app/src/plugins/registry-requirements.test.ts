@@ -121,3 +121,23 @@ it("rejects the unreleased translation API on 0.12.0 before evaluating its impor
     'Plugin "translated" requires Paseo >=0.12.1. Your app is 0.12.0. Use a compatible plugin version or update the app.',
   );
 });
+
+it("skips file-panel bundles on older apps and installs them on the required app", () => {
+  const entry = {
+    id: "files",
+    requirements: { paseo: ">=0.13.0" },
+    clientBundle: `(function() { return { default(client) {
+      client.addFilePanel({ id: "pdf", title: "PDF", icon: "FileText",
+        files: { extensions: ["pdf"] }, document: "bytes", Component() { return null; } });
+      return () => {};
+    } }; })`,
+  };
+  const old = registry("0.12.0");
+  old.result.installCatalog("host", [entry], { client, audio });
+  expect(old.starts()).toBe(0);
+  expect(old.result.getSnapshot()).toEqual([]);
+  const current = registry("0.13.0");
+  current.result.installCatalog("host", [entry], { client, audio });
+  expect(current.starts()).toBe(1);
+  expect(current.result.getSnapshot()[0]?.filePanels.map((panel) => panel.id)).toEqual(["pdf"]);
+});

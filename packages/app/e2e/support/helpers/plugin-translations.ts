@@ -1,4 +1,4 @@
-import { installDeveloperToastDismissal } from "../developer-ui.mjs";
+import { hideDeveloperToasts } from "../developer-ui.mjs";
 import { seedWorkspace } from "./seed-client";
 import { buildAgentRoute } from "./mock-agent";
 import { openCommandCenter } from "./command-center";
@@ -55,7 +55,7 @@ export async function verifyPluginTranslations(page: Page, info: TestInfo) {
       viewport: { width: 1440, height: 1000 },
     });
     const second = await secondContext.newPage();
-    await installDeveloperToastDismissal(second);
+    await hideDeveloperToasts(second);
     await second.goto(page.url());
     await expect(second.getByText("App language: en", { exact: true })).toBeVisible();
     await chooseChinese(second);

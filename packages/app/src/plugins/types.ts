@@ -8,6 +8,7 @@ import type {
   PluginThemeContribution as SDKPluginThemeContribution,
 } from "@getpaseo/plugin";
 import type {
+  PluginFilePanelContribution as SDKPluginFilePanelContribution,
   PluginCommandCenterItemContribution as SDKPluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution as SDKPluginClientSlashCommandContribution,
   PluginComposerPillContribution as SDKPluginComposerPillContribution,
@@ -21,6 +22,7 @@ import type {
   PluginWorkspacePanelContribution as SDKPluginWorkspacePanelContribution,
 } from "@getpaseo/plugin/client";
 
+type PluginFilePanelContribution = SDKPluginFilePanelContribution<PluginText>;
 type PluginAttachmentSourceContribution = SDKPluginAttachmentSourceContribution<PluginText>;
 type PluginThemeContribution = SDKPluginThemeContribution<PluginText>;
 type PluginCommandCenterItemContribution = SDKPluginCommandCenterItemContribution<PluginText>;
@@ -47,6 +49,7 @@ export interface EvaluatedPlugin {
   // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
   /** `addSidebarItem` registrations, so `/plugin/<id>/sidebar/<item>` routes keep resolving. */
   legacySidebarItems: PluginSidebarContribution[];
+  filePanels: PluginFilePanelContribution[];
   workspacePanels: EvaluatedPluginWorkspacePanelContribution[];
   commandCenterItems: PluginCommandCenterItemContribution[];
   clientSlashCommands: PluginClientSlashCommandContribution[];
@@ -72,6 +75,7 @@ export interface InstalledPlugin extends EvaluatedPlugin {
 }
 
 export type {
+  PluginFilePanelContribution,
   PluginAttachmentSourceContribution,
   PluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution,

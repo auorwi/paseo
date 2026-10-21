@@ -75,7 +75,7 @@ describe("plugin translation author types", () => {
 it("keeps historical string descriptor helpers while accepting translated registrations", () => {
   expect(
     typeErrors(`
-    import { defineTranslations, type PluginText, type PluginClientContext, type PluginScreenContribution, type PluginWorkspacePanelContribution, type PluginSettingsScreenContribution, type PluginSidebarItemContribution, type PluginSidebarContribution, type PluginCommandCenterItemContribution, type PluginClientSlashCommandContribution, type PluginButton, type PluginHeaderButtonContribution, type PluginComposerPillContribution, type PluginButtonMenuEntry } from "@getpaseo/plugin/client";
+    import { defineTranslations, type PluginText, type PluginFilePanelContribution, type PluginClientContext, type PluginScreenContribution, type PluginWorkspacePanelContribution, type PluginSettingsScreenContribution, type PluginSidebarItemContribution, type PluginSidebarContribution, type PluginCommandCenterItemContribution, type PluginClientSlashCommandContribution, type PluginButton, type PluginHeaderButtonContribution, type PluginComposerPillContribution, type PluginButtonMenuEntry } from "@getpaseo/plugin/client";
     import { z } from "zod";
     import { defineAttachmentSource, type PluginThemeContribution, type PluginAttachmentSourceContribution } from "@getpaseo/plugin";
     const messages = defineTranslations({ resources: { en: { title: "Notes" } } });
@@ -83,8 +83,8 @@ it("keeps historical string descriptor helpers while accepting translated regist
     function historicalScreen(screen: PluginScreenContribution) {
       return typeof screen.title === "function" ? screen.title({}).trim() : screen.title.trim();
     }
-    function historicalLabels(panel: PluginWorkspacePanelContribution, settings: PluginSettingsScreenContribution, sidebar: PluginSidebarItemContribution, legacy: PluginSidebarContribution, command: PluginCommandCenterItemContribution, slash: PluginClientSlashCommandContribution, button: PluginButton, header: PluginHeaderButtonContribution, pill: PluginComposerPillContribution, menu: PluginButtonMenuEntry, theme: PluginThemeContribution, source: PluginAttachmentSourceContribution) {
-      panel.title.trim(); settings.title.trim(); sidebar.title.trim(); legacy.title.trim(); command.title.trim();
+    function historicalLabels(filePanel: PluginFilePanelContribution, panel: PluginWorkspacePanelContribution, settings: PluginSettingsScreenContribution, sidebar: PluginSidebarItemContribution, legacy: PluginSidebarContribution, command: PluginCommandCenterItemContribution, slash: PluginClientSlashCommandContribution, button: PluginButton, header: PluginHeaderButtonContribution, pill: PluginComposerPillContribution, menu: PluginButtonMenuEntry, theme: PluginThemeContribution, source: PluginAttachmentSourceContribution) {
+      filePanel.title.trim(); panel.title.trim(); settings.title.trim(); sidebar.title.trim(); legacy.title.trim(); command.title.trim();
       slash.description.trim(); slash.argumentHint.trim(); button.title.trim(); button.label?.trim();
       header.button.title.trim(); pill.button.title.trim(); if (menu.kind === "item") menu.title.trim();
       theme.name.trim(); source.title.trim(); source.pickerTitle.trim(); source.searchPlaceholder.trim();
@@ -98,6 +98,7 @@ it("keeps historical string descriptor helpers while accepting translated regist
       const translated: PluginScreenContribution<PluginText> = { id: "typed", title: messages.message("title"), Component };
       client.addScreen(translated);
       client.addSidebarHeaderItem({ id: "notes", title: messages.message("title"), Component });
+      client.addFilePanel({ id: "notes", title: messages.message("title"), icon: "File", files: { extensions: ["notes"] }, Component });
       client.addSettingsScreen({ id: "notes", title: messages.message("title"), icon: "File", Component });
       client.addWorkspacePanel({ id: "notes", title: messages.message("title"), icon: "File", context: "workspace", Component });
       client.addCommandCenterItem({ id: "notes", title: messages.message("title"), icon: "File", context: "global", onSelect() {} });

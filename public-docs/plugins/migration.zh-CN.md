@@ -66,6 +66,7 @@ my-plugin/
 | 旧根入口中的 `plugin.addSurface(id, Component)`                                               | `index.client.tsx` 中的 `client.addScreen({ id, title, Component })`                                                   |
 | 旧根入口中的 `plugin.addSidebarItem({ id, title, icon, surface })`                            | `index.client.tsx` 中的 `client.addSidebarHeaderItem({ id, title, Component })`；见[侧边栏项](reference#sidebar-items) |
 | 新的侧边栏底部贡献                                                                            | `index.client.tsx` 中的 `client.addSidebarFooterItem({ id, title, Component })`                                        |
+| 新的文件面板贡献                                                                              | `index.client.tsx` 中的 `client.addFilePanel(panel)`                                                                   |
 | 旧根入口中的 `plugin.addWorkspacePanel(panel)`                                                | `index.client.tsx` 中的 `client.addWorkspacePanel(panel)`                                                              |
 | 旧根入口中的 `plugin.addCommandCenterItem(item)`                                              | `index.client.tsx` 中的 `client.addCommandCenterItem(item)`                                                            |
 | 旧根入口中的 `plugin.addClientSlashCommand(command)`                                          | `index.client.tsx` 中的 `client.addSlashCommand(command)`                                                              |

@@ -14,6 +14,7 @@ nav: 参考
 
 - 为 Paseo 客户端添加 React Native 界面，以及侧边栏顶部和底部项；
 - 作为工作区标签页打开的工作区面板和 Agent 面板；
+- 用于查看或编辑匹配文件的[文件面板](#file-panels)；
 - Command Center 中的全局、工作区和 Agent 操作；
 - 消息 Composer 中的斜杠命令；
 - 经过转换的、以及由 daemon 推送的 Agent 时间线行；
@@ -167,7 +168,7 @@ client.addScreen({
 });
 ```
 
-`PluginText` 为 `string | PluginMessage`。消息引用支持界面标题（包括标题函数）、设置与侧边栏标题、面板标题、Command Center 标题、斜杠命令描述与参数提示、按钮标题与标签、嵌套菜单标题、附件来源标题/选择器标题/搜索占位文本，以及主题名称。现有的字符串仍然有效。保持 ID、斜杠命令名称、图标、URL 和命令搜索关键词不变。
+`PluginText` 为 `string | PluginMessage`。消息引用支持界面标题（包括标题函数）、设置与侧边栏标题、工作区与文件面板标题、Command Center 标题、斜杠命令描述与参数提示、按钮标题与标签、嵌套菜单标题、附件来源标题/选择器标题/搜索占位文本，以及主题名称。现有的字符串仍然有效。保持 ID、斜杠命令名称、图标、URL 和命令搜索关键词不变。
 
 描述符类型保留现有的字符串默认值。为翻译描述符显式标注类型时，传入文本类型参数，例如 `PluginScreenContribution<PluginText>`。内联注册会自动推导类型。
 
@@ -601,9 +602,11 @@ export default function contribute(server: PluginServerContext) {
       return;
     }
 
-    const text = latestOutputText(event.timeline);
+    const agent = context.paseo.agents.ref(event.agent.id);
+    const page = await agent.timeline.refetch({ direction: "tail", limit: 20 });
+    const text = latestOutputText(page.entries.map(({ item }) => item));
     if (/out of credits/i.test(text)) {
-      await context.paseo.agents.ref(event.agent.id).send("Try again.");
+      await agent.send("Try again.");
     }
   });
 
@@ -616,6 +619,8 @@ Turn ends: "out of credits"
   → plugin sends "Try again."
   → a new turn starts
 ```
+
+该处理函数只获取最近 20 条时间线条目，不检查这一页之前的输出。插件需要更多历史时，请用 `cursor` 和 `direction` 继续翻页。
 
 这会用现有的 SDK 发送一条新消息。持续匹配会不断发送后续消息；需要时请在插件中添加次数限制或延迟。附件和工具的效果不会被重放。
 
@@ -666,19 +671,21 @@ export default function contribute(server: PluginServerContext) {
 
 ### 事件 {#events}
 
-| 名称                         | 事件字段                                 | 触发时机                      |
-| ---------------------------- | ---------------------------------------- | ----------------------------- |
-| `agent.created`              | `agent`                                  | 普通创建完成；不包括导入/恢复 |
-| `agent.closed`               | `agent`                                  | 一个运行中的 Agent 运行时关闭 |
-| `agent.turn_started`         | `agent`, `turnId`                        | 实时轮次开始                  |
-| `agent.turn_ended`           | `agent`, `turnId`, `outcome`, `timeline` | 实时轮次完成、失败或被取消    |
-| `agent.permission_requested` | `agent`, `request`                       | 权限请求或问题进入待处理状态  |
-| `agent.permission_resolved`  | `agent`, `requestId`, `resolution`       | 待处理的请求得到回应或被清除  |
-| `agent.archived`             | `agent`, `archivedAt`                    | 归档状态已保存                |
-| `workspace.created`          | `workspace`                              | 记录已创建；目录可用          |
-| `workspace.archived`         | `workspace`                              | 归档状态已保存                |
+| 名称                         | 事件字段                                              | 触发时机                      |
+| ---------------------------- | ----------------------------------------------------- | ----------------------------- |
+| `agent.created`              | `agent`                                               | 普通创建完成；不包括导入/恢复 |
+| `agent.closed`               | `agent`                                               | 一个运行中的 Agent 运行时关闭 |
+| `agent.turn_started`         | `agent`, `turnId`                                     | 实时轮次开始                  |
+| `agent.turn_ended`           | `agent`, `turnId`, `outcome`, 已弃用的 `timeline: []` | 实时轮次完成、失败或被取消    |
+| `agent.permission_requested` | `agent`, `request`                                    | 权限请求或问题进入待处理状态  |
+| `agent.permission_resolved`  | `agent`, `requestId`, `resolution`                    | 待处理的请求得到回应或被清除  |
+| `agent.archived`             | `agent`, `archivedAt`                                 | 归档状态已保存                |
+| `workspace.created`          | `workspace`                                           | 记录已创建；目录可用          |
+| `workspace.archived`         | `workspace`                                           | 归档状态已保存                |
 
 Agent 事件不包括 daemon 私有的一次性辅助 Agent。公开的后台工作区及其普通 Agent 与其他工作区运行相同的生命周期钩子。归档事件可能早于运行时/worktree 清理；当清理很重要时，请单独观察生命周期何时完成。
+
+`agent.turn_ended.timeline` 已弃用，并且始终为空。需要历史时，请用 `context.paseo.agents.ref(event.agent.id).timeline.refetch({ direction: "tail", limit: 20 })` 按需获取。钩子负载的大小不会随对话历史增长。
 
 **共享的负载结构**（`@getpaseo/plugin/server`）：
 
@@ -1591,6 +1598,137 @@ Agent 快照字段：
 | `labels`            | `Record<string, string>`                                       |
 
 标签页的焦点、拆分、关闭、持久化、查询状态、API/RPC Provider 以及渲染错误边界都由 Paseo 负责。如果恢复的标签页所对应的插件、面板、上下文、工作区或 Agent 不可用，该标签页会保持打开并显示“不可用”消息，而不会让工作区崩溃。
+
+## 文件面板 {#file-panels}
+
+注册一个组件，把文件渲染为文件标签页的主体。组件会收到所选主机上该文件的句柄，远程主机也一样。由组件读取文件、显示自己的加载状态，并在用户编辑时写回文件。标签页栏会显示面板切换器、溢出菜单，以及在面板报告有未保存更改时显示一个圆点。
+
+```tsx
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { PdfPanel } from "./client/pdf-panel";
+
+export default function contribute(client: PluginClientContext) {
+  return client.addFilePanel({
+    id: "pdf",
+    title: "PDF",
+    icon: "FileText",
+    files: { extensions: ["pdf"] },
+    Component: PdfPanel,
+  });
+}
+```
+
+`addFilePanel` 接收一个 `PluginFilePanelContribution`，并返回一个幂等的清理函数。客户端入口被卸载时，Paseo 也会移除该注册。
+
+| 字段        | 必填 | 含义                                                                 |
+| ----------- | ---- | -------------------------------------------------------------------- |
+| `id`        | 是   | 插件内唯一的 ID，匹配 `^[a-z][a-z0-9-]*$`。                          |
+| `title`     | 是   | 显示在面板切换器、选择器和 **打开方式…** 菜单中的非空标签。          |
+| `icon`      | 是   | Lucide 名称、`{ svg }` 或组件。参见[图标](#icons)。                  |
+| `files`     | 是   | `{ extensions: readonly string[]; filenames?: readonly string[] }`。 |
+| `Component` | 是   | 接收 `PluginFilePanelProps` 的组件。                                 |
+
+扩展名不带前导点，匹配时不区分大小写。文件名按完整的 basename 匹配，区分大小写。选择器不包含路径、glob 或通配符。只按文件名选择时，请使用 `extensions: []`。至少需要一个扩展名或文件名。
+
+### 文件面板属性 {#file-panel-props}
+
+`PluginFilePanelProps` 包含[主题和布局](#theme-and-layout)中介绍的通用属性 `theme`、`host`、`layout` 和可选的 `navigation`，另外还有：
+
+| 属性          | 类型                 | 含义                                                               |
+| ------------- | -------------------- | ------------------------------------------------------------------ |
+| `workspaceId` | `string`             | 包含该文件标签页的工作区。                                         |
+| `file`        | `PluginFile`         | 文件的句柄。标签页显示该文件期间保持不变。                         |
+| `tab`         | `PluginFileTab`      | `setModified(modified)` 会显示标签页的未保存圆点，并在关闭前确认。 |
+| `location`    | `PluginFileLocation` | `lineStart?`、`lineEnd?` 和 `revision`，后者在每次导航时递增。     |
+
+Paseo 在知道文件存在及其大小后就会挂载你的面板，不会先读取文件。`file` 对象保持不变，它的 stat 字段保存 Paseo 已知的最新版本。请在渲染时读取这些字段；它们变化时不会重新渲染你的面板。面板要通过 `watch` 监听器，或 `useFileText`、`useFileBytes`、`useFileUrl` 引起的重新渲染，得知它们已变化：
+
+| 成员                             | 含义                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| `path`、`name`、`extension`      | 主机上的绝对路径、basename，以及不带点的小写扩展名（没有时为 `""`）。         |
+| `size`、`modifiedAt`、`mimeType` | 以字节计的大小、修改时间戳，以及主机报告的 MIME 类型。                        |
+| `readText()`                     | 以 UTF-8 读取文件。字节顺序标记（BOM）会被去掉，并由 `writeText` 写回。       |
+| `readBytes()`                    | 读取文件的字节。                                                              |
+| `url()`                          | 当前字节的本地 `blob:`（Web）或 `file:`（原生）URL，供 `DocumentFrame` 使用。 |
+| `writeText(text, options?)`      | 如果文件在磁盘上自该句柄上次读取或写入后没有变化，则以 UTF-8 写入文本。       |
+| `writeBytes(bytes, options?)`    | 与上面相同，但写入字节。                                                      |
+| `watch(listener)`                | 用 `PluginFileEvent` 调用 `listener(event)`；返回取消订阅函数。               |
+
+`PluginFileEvent` 是 `{ type: "changed" }` 或 `{ type: "deleted" }`。请根据 `type` 分支处理；以后的版本可能会增加字段。文件被删除时，你的面板保持挂载。`watch` 会在一次读取确认文件已不存在后报告 `{ type: "deleted" }`，因此某个程序删除文件后又写回时，只会报告 `{ type: "changed" }`。被删除的文件重新出现时，会报告 `{ type: "changed" }`。
+
+如果文件在该句柄上次读取或写入后在磁盘上发生了变化，写入会以 `PluginFileConflictError` reject。传入 `{ force: true }` 可以强制写入。文件已不存在时，无论是否传入 `force`，写入都会以 `PluginFileDeletedError` reject。句柄自己的写入不会通知它的监听器。`url()` 返回的 URL 由 Paseo 管理：在更新版本的 URL 解析完成或标签页关闭之前，它一直有效。不要用 `file.path` 拼接 daemon URL；daemon 在远程时，本地 URL 同样可用。
+
+### 读取文件 {#read-the-file}
+
+大多数面板通过 hook 读取文件。每个 hook 在挂载时读取，在文件于磁盘上变化时重新读取，并在重新读取期间保留当前值：
+
+| Hook                 | 就绪状态                                 |
+| -------------------- | ---------------------------------------- |
+| `useFileText(file)`  | `{ status: "ready", text: string }`      |
+| `useFileBytes(file)` | `{ status: "ready", bytes: Uint8Array }` |
+| `useFileUrl(file)`   | `{ status: "ready", url: string }`       |
+
+在第一次读取之前，每个 hook 还会返回 `{ status: "loading" }`；读取失败时返回 `{ status: "error", error }`。文件已删除时，`error` 是 `PluginFileDeletedError`。在内容显示到屏幕上之前，请显示 `@getpaseo/plugin/client/ui` 中的 `Loading`；它会填满面板，所以可以把它渲染在仍在布局的内容之上。
+
+```tsx
+import { type PluginFilePanelProps, useFileUrl } from "@getpaseo/plugin/client";
+import { DocumentFrame, Loading } from "@getpaseo/plugin/client/ui";
+import { Text } from "react-native";
+
+export function PdfPanel({ file, theme }: PluginFilePanelProps) {
+  const url = useFileUrl(file);
+  if (url.status === "loading") return <Loading />;
+  if (url.status === "error") {
+    return <Text style={{ color: theme.colors.statusDanger }}>{url.error.message}</Text>;
+  }
+  return <DocumentFrame url={url.url} testID="pdf-panel" />;
+}
+```
+
+### 编辑文件 {#edit-the-file}
+
+hook 的重新读取会采用磁盘上的版本，因此下一次写入会覆盖那里发生的任何变化。持有未保存编辑的面板应只用 `readText()` 读取一次，然后自己处理 `watch`：
+
+1. 用 `file.readText()` 读取并显示文本。
+2. 每次编辑时，调用 `tab.setModified(true)`，并以防抖方式用 `file.writeText(text)` 写入。
+3. 写入完成且没有更新的编辑等待写入时，调用 `tab.setModified(false)`。
+4. 收到 `{ type: "changed" }` 且没有未保存内容时，重新读取。有未保存的编辑时，显示冲突，让用户重新加载或用 `{ force: true }` 覆盖。
+5. 遇到 `PluginFileConflictError` 时，显示同样的冲突。
+6. 收到 `{ type: "deleted" }` 或遇到 `PluginFileDeletedError` 时，告诉用户文件已不存在。
+
+请在组件卸载之前写入待保存的编辑：切换面板或关闭标签页都会卸载它。如果面板报告有未保存的更改，Paseo 会在关闭标签页之前询问。[Markdown 面板](https://github.com/getpaseo/paseo/tree/main/plugin-examples/markdown-panel)示例实现了这些步骤。
+
+### 选择与打开方式 {#selection-and-open-with}
+
+插件面板是其选择器匹配的每个文件的候选面板，无论是文本还是二进制文件。内置面板要求主机报告的文件类型：Markdown、HTML 和 **源代码** 打开文本文件，**图片** 打开图片。候选面板的顺序是：内置的 Markdown、HTML 和图片面板，然后按主机目录顺序排列的插件面板，最后是每个文本文件都有的 **源代码**。只有没有其他面板认领文件时，源代码才会默认打开它。
+
+记住的关联在其面板于当前主机上可用时选择该面板。否则 Paseo 打开第一个候选面板。当插件面板是多个候选面板之一且没有适用的关联时，Paseo 每次打开标签页时询问一次，询问显示在它已经打开的面板上方。只有内置面板时从不询问：Markdown 文件用 Markdown 打开，并在切换器中提供源代码。安装了一个 Markdown 插件后，选择器会提供 **Markdown — Paseo**、**Rich Markdown — markdown-panel** 和 **源代码 — Paseo**。认领文本扩展名的插件会与源代码竞争，所以第一次打开时会询问；单独认领某个二进制文件的插件会直接打开，不询问。
+
+**不再询问** 会在此设备上为该扩展名记住这个选择。当某个候选面板匹配了确切的文件名时，该选择改为应用于那个 basename。不可用的关联在该主机上会被忽略，并为安装了其面板的主机保留。
+
+用户可以用栏中的面板切换器切换当前标签页：它并排显示最多三个面板（手机上为两个），更多的面板放在菜单中；也可以用标签页菜单中的 **打开方式…**。对于这个标签页，该选择优先于记住的关联，直到标签页被重新定向。栏的溢出菜单和打开方式中的 **始终用于** 会记住当前显示的面板。从链接或搜索结果在某一行打开文件时，标签页会切换到源代码。没有候选面板的文件显示 **二进制预览不可用**；二进制文件没有源代码面板。
+
+### DocumentFrame {#documentframe}
+
+从 `@getpaseo/plugin/client/ui` 导入 `DocumentFrame`，用来显示 `file.url()` 或 `useFileUrl` 返回的本地文件 URL：
+
+| 属性     | 必填 | 含义                                                                 |
+| -------- | ---- | -------------------------------------------------------------------- |
+| `url`    | 是   | 本地文件 URL；Web 上为 `blob:`，原生上为 `file:`。其他协议会被拒绝。 |
+| `testID` | 否   | 该框架的测试标识。                                                   |
+
+在 Web 上，挂载 iframe 之前会先检查本地 URL 的媒体类型。PDF 使用浏览器的 PDF 查看器，不加沙箱；其他所有类型，包括 HTML 和未知类型，都保持完整沙箱，不允许脚本或同源访问。原生平台使用禁用了 JavaScript、存储和后续导航的 WebView。在平台无法内联显示文档的地方，例如 Android 上的 PDF，`DocumentFrame` 会改为显示一条说明文件类型的消息，因此请在所有平台上渲染它。
+
+内联 PDF 渲染需要 Paseo 0.13.0 或更高版本的 daemon；更早的 daemon 会把 PDF 报告为 `application/octet-stream`。
+
+### 版本要求与示例 {#version-requirement-and-examples}
+
+文件面板、`DocumentFrame` 和 `Loading` 需要 Paseo 0.13.0 或更高版本。请在 `paseo-plugin.json` 中声明 `"requirements": { "paseo": ">=0.13.0" }`。daemon 和应用都会检查[版本要求](#requirements)；更早的应用会在执行客户端包之前跳过它。用 `writeBytes` 写入需要 Paseo 0.13.0 或更高版本的 daemon。
+
+完整的目录示例：
+
+- [PDF 面板](https://github.com/getpaseo/paseo/tree/main/plugin-examples/pdf-panel)：`useFileUrl` 搭配 `Loading` 和 `DocumentFrame`。
+- [Markdown 面板](https://github.com/getpaseo/paseo/tree/main/plugin-examples/markdown-panel)：打包的 CodeMirror 编辑器，只读取一次、用 `writeText` 保存并处理冲突，在原生平台上显示只读文本。
 
 ## Command Center 条目 {#command-center-items}
 

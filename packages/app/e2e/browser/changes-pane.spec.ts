@@ -832,6 +832,9 @@ test("compact Changes keeps its actions compact and menu-only", async ({ page })
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
   await page.setViewportSize({ width: 480, height: 900 });
+  // The shell survives the breakpoint, so the wide Explorer can still be on screen right after the
+  // resize. Check for the compact tab only once the shell reports the compact layout.
+  await expect(page.getByTestId("compact-shell")).toBeVisible();
 
   const compactChangesTab = page
     .getByTestId("workspace-tab-changes_tree")

@@ -1,3 +1,5 @@
+import { filePanelTitle } from "@/file-panels/choice/presentation";
+import { i18n } from "@/i18n/i18next";
 import { createPluginHosts } from "./hosts";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { PaseoApi } from "@getpaseo/client";
@@ -173,12 +175,25 @@ test("locale snapshots preserve installation state and observations, then releas
     return {default(plugin) {
       plugin.paseo.observeEvents(["notes"]);
       plugin.addScreen({id:"notes",title:messages.message("title"),Component:function Notes(){return null;}});
+      plugin.addFilePanel({id:"notes",title:messages.message("title"),icon:"FileText",files:{extensions:["notes"]},Component:function NotesFile(){return null;}});
       return function(){};
     }};
   })`,
   };
   h.plugins.installCatalog("host", [translated], { client: h.client, audio });
+  expect(h.plugins.getEvaluationError("host", "notes")).toBeUndefined();
   const [before] = h.plugins.getSnapshot();
+  function fileTitle(plugin: typeof before) {
+    const contribution = plugin.filePanels[0];
+    return filePanelTitle(i18n.t, {
+      id: "plugin:notes/notes",
+      builtin: false,
+      files: contribution.files,
+      plugin,
+      contribution,
+    });
+  }
+  expect(fileTitle(before)).toBe("Notes");
   expect(before.locale).toBe("en");
   expect(
     before.i18n.resolve(
@@ -190,6 +205,9 @@ test("locale snapshots preserve installation state and observations, then releas
   for (const listener of listeners) listener();
   const [after] = h.plugins.getSnapshot();
   expect(after.locale).toBe("zh-CN");
+  expect(fileTitle(after)).toBe("笔记");
+  expect(fileTitle(before)).toBe("Notes");
+  expect(after.filePanels[0].Component).toBe(before.filePanels[0].Component);
   expect(
     after.i18n.resolve(
       after.surfaces[0].title as import("@getpaseo/plugin/client").PluginText,
