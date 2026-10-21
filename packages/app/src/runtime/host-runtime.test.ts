@@ -1677,7 +1677,7 @@ describe("HostRuntimeController", () => {
 
 describe("HostRuntimeStore", () => {
   it.each([false, true])(
-    "keeps routed and direct candidates on one usable host (direct first: %s)",
+    "keeps B and C distinct with routed and direct candidates (B direct first: %s)",
     async (directFirst) => {
       const directory = new Deferred<HostDirectory>();
       const origin = new FakeDaemonClient();
@@ -1709,25 +1709,28 @@ describe("HostRuntimeStore", () => {
         });
       try {
         if (directFirst) await addDirectB();
+        await store.upsertDirectConnection({
+          serverId: "srv_c",
+          endpoint: "c:6767",
+          label: "My C",
+        });
         await store.upsertDirectConnection({ serverId: "srv_a", endpoint: "a:6767" });
         await waitForHostOnline(store, "srv_a");
         directory.resolve({
           self: { serverId: "srv_a", label: "A" },
-          hosts: [
-            {
-              registrationId: "reg_b",
-              serverId: "srv_b",
-              label: "Fleet B",
-              source: { id: "user", key: "b" },
-              metadata: {},
-              enabled: true,
-              status: "online",
-              targetDescription: "b:6767",
-              lastOnlineAt: null,
-              nextRetryAt: null,
-              error: null,
-            },
-          ],
+          hosts: ["b", "c"].map((target) => ({
+            registrationId: `reg_${target}`,
+            serverId: `srv_${target}`,
+            label: `Fleet ${target.toUpperCase()}`,
+            source: { id: "user", key: target },
+            metadata: {},
+            enabled: true,
+            status: "online" as const,
+            targetDescription: `${target}:6767`,
+            lastOnlineAt: null,
+            nextRetryAt: null,
+            error: null,
+          })),
         });
         await vi.waitFor(() =>
           expect(store.getHosts()).toContainEqual(
@@ -1752,6 +1755,18 @@ describe("HostRuntimeStore", () => {
         expect(targets[0]?.connections).toHaveLength(2);
         expect(targets[0]?.label).toBe(directFirst ? "My B" : "Fleet B");
         expect(store.getSnapshot("srv_b")?.connectionStatus).toBe("online");
+        expect(store.getHosts()).toHaveLength(3);
+        const targetC = store.getHosts().find((host) => host.serverId === "srv_c");
+        expect(targetC).toMatchObject({
+          serverId: "srv_c",
+          label: "My C",
+          connections: [
+            { id: "direct:c:6767", type: "directTcp", endpoint: "c:6767", useTls: false },
+            { id: "via:srv_a", type: "routed", originServerId: "srv_a" },
+          ],
+        });
+        await waitForHostOnline(store, "srv_c");
+        expect(store.getSnapshot("srv_c")?.connectionStatus).toBe("online");
       } finally {
         store.syncHosts([]);
       }

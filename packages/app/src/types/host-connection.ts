@@ -245,9 +245,11 @@ export function upsertHostConnectionInProfiles(input: {
   const matchingIndexes = existing.reduce<number[]>((matches, daemon, index) => {
     if (
       daemon.serverId === serverId ||
-      daemon.connections.some((existingConnection) =>
-        hostConnectionEquals(existingConnection, normalizedConnection),
-      )
+      // A routed candidate names its origin; its destination belongs to the host profile.
+      (normalizedConnection.type !== "routed" &&
+        daemon.connections.some((existingConnection) =>
+          hostConnectionEquals(existingConnection, normalizedConnection),
+        ))
     ) {
       matches.push(index);
     }
