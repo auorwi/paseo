@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Modal, TextInput, ScrollView } from "@getpaseo/plugin/client/react-native";
+import { Modal, TextInput, ScrollView } from "@getpaseo/plugin/client/ui";
 import { useTranslation, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
 

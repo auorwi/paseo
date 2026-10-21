@@ -1,11 +1,10 @@
 import { useCallback } from "react";
-import { copyText } from "@getpaseo/plugin/client/react-native";
+import { copyText, SidebarRow } from "@getpaseo/plugin/client/ui";
 import type {
   PluginButtonRegistration,
   PluginClientContext,
   PluginSidebarItemProps,
 } from "@getpaseo/plugin/client";
-import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { messages } from "./client/messages";
 import { Notes } from "./client/notes";
 
